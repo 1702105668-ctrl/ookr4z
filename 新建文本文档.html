@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ookr4z - 音游爱好者</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #e6e6e6;
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 30px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #ff6b6b, #ffa500, #ffd700, #90ee90, #87ceeb, #dda0dd);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+        }
+        
+        .subtitle {
+            font-size: 1.2rem;
+            color: #a0a0a0;
+            margin-bottom: 20px;
+        }
+        
+        .avatar {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            margin: 20px auto;
+            background: linear-gradient(45deg, #ff6b6b, #ffa500, #ffd700);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            box-shadow: 0 0 20px rgba(255, 165, 0, 0.5);
+        }
+        
+        section {
+            margin-bottom: 40px;
+        }
+        
+        h2 {
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            color: #ffa500;
+            border-left: 4px solid #ffa500;
+            padding-left: 10px;
+        }
+        
+        .games-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .game-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+            transition: transform 0.3s, background 0.3s;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .game-card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .game-title {
+            font-size: 1.3rem;
+            margin-bottom: 10px;
+            color: #ffd700;
+        }
+        
+        .game-status {
+            color: #87ceeb;
+            font-size: 0.9rem;
+            margin-bottom: 5px;
+        }
+        
+        .game-achievement {
+            color: #90ee90;
+            font-size: 0.9rem;
+        }
+        
+        .artists {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+        }
+        
+        .artist-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 15px 20px;
+            text-align: center;
+            transition: all 0.3s;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .artist-card:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: scale(1.05);
+        }
+        
+        .artist-name {
+            font-weight: bold;
+            color: #ffa500;
+        }
+        
+        .furry-badge {
+            display: inline-block;
+            background: linear-gradient(45deg, #ff6b6b, #ffa500);
+            padding: 5px 15px;
+            border-radius: 20px;
+            margin-top: 10px;
+            font-weight: bold;
+            box-shadow: 0 0 10px rgba(255, 165, 0, 0.5);
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: #a0a0a0;
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+            
+            h1 {
+                font-size: 2.2rem;
+            }
+            
+            .games-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="avatar">O</div>
+            <h1>Ookr4z</h1>
+            <p class="subtitle">音游爱好者 | 节奏大师 | 福瑞控</p>
+            <p>专注于各种音乐游戏的狂热玩家，追求极致的手速与节奏感</p>
+        </header>
+        
+        <section>
+            <h2>音游成就</h2>
+            <div class="games-grid">
+                <div class="game-card">
+                    <div class="game-title">osu!</div>
+                    <div class="game-status">主玩mania模式</div>
+                    <div class="game-achievement">4k reform9段，7800pp</div>
+                </div>
+                
+                <div class="game-card">
+                    <div class="game-title">Malody</div>
+                    <div class="game-status">主玩4k</div>
+                    <div class="game-achievement">目前段位extra-2</div>
+                </div>
+                
+                <div class="game-card">
+                    <div class="game-title">Vivid/Stasis</div>
+                    <div class="game-status">rating中国第6，世界第15</div>
+                </div>
+                
+                <div class="game-card">
+                    <div class="game-title">ADOFAI</div>
+                    <div class="game-status">淡坑状态</div>
+                    <div class="game-achievement">最高成就标20.7+，严20.1</div>
+                </div>
+                
+                <div class="game-card">
+                    <div class="game-title">Phigros</div>
+                    <div class="game-status">淡坑状态</div>
+                    <div class="game-achievement">定数大改前rks16.19，现版本最高成就击杀QZKago Requiem AT17</div>
+                </div>
+                
+                <div class="game-card">
+                    <div class="game-title">Phira</div>
+                    <div class="game-status">淡坑状态</div>
+                    <div class="game-achievement">RinFall键盘段位1段</div>
+                </div>
+            </div>
+        </section>
+        
+        <section>
+            <h2>喜爱的曲师</h2>
+            <div class="artists">
+                <div class="artist-card">
+                    <div class="artist-name">Frums</div>
+                    <div>实验性电子音乐</div>
+                </div>
+                
+                <div class="artist-card">
+                    <div class="artist-name">Katagiri</div>
+                    <div>高速硬核音乐</div>
+                </div>
+                
+                <div class="artist-card">
+                    <div class="artist-name">Camellia (かめりあ)</div>
+                    <div>多样电子音乐风格</div>
+                </div>
+            </div>
+        </section>
+        
+        <section style="text-align: center;">
+            <div class="furry-badge">福瑞控</div>
+        </section>
+        
+        <footer>
+            <p>© 2023 Ookr4z - 音游世界探索者</p>
+        </footer>
+    </div>
+</body>
+</html>
