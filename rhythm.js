@@ -1,362 +1,105 @@
 /* =========================================================
-   打歌 · Phigros 风格 4K 节奏小游戏
-   纯原生 JS，无任何外部依赖。
+   4K 打歌 · 谱面来自 Malody Regular Dan v3（用户提供的 osz）
+   皮肤来自 OoKr4z's skin（用户提供的 osk）
    ========================================================= */
 (function () {
   "use strict";
 
-  const LANES = 4;
-  const BPM = 128;
-  const BEAT = 60 / BPM;
-  const SONG_BEATS = 64;
-  const SONG_LENGTH = SONG_BEATS * BEAT;
-  const HIT_WINDOW = 0.16;
-  const PERFECT_WINDOW = 0.065;
-  const LANE_COLORS = ["#ff6b9d", "#c084fc", "#4be3d0", "#ffd166"];
-  const KEY_LABELS = ["D", "F", "J", "K"];
-
-  const DIFFS = {
-    easy: {
-      label: "简单",
-      step: 2,
-      travel: 2.0,
-      pattern: [0, 2, 1, 3, 2, 0, 3, 1],
-      extraEvery: 4,
-      extraOffset: 1,
-      extraLaneShift: 1,
-      chordEvery: 0
+  const PACKS = {
+    jack: {
+      label: "JACK",
+      title: "叠键特化",
+      desc: "密集的叠键与 Jack，考验手指的独立性。",
+      color: "#ff5c9d"
     },
-    normal: {
-      label: "普通",
-      step: 1,
-      travel: 1.7,
-      pattern: [0, 1, 2, 3, 1, 0, 2, 3, 1, 2, 0, 3],
-      extraEvery: 4,
-      extraOffset: 0.5,
-      extraLaneShift: 1,
-      chordEvery: 0
-    },
-    hard: {
-      label: "困难",
-      step: 0.5,
-      travel: 1.5,
-      pattern: [0, 2, 1, 3, 0, 1, 2, 3, 2, 0, 3, 1, 1, 3, 0, 2],
-      extraEvery: 0,
-      extraOffset: 0,
-      extraLaneShift: 1,
-      chordEvery: 8
+    stream: {
+      label: "STREAM",
+      title: "连打特化",
+      desc: "连续的 Stream 与长条，跟着鼓点一路冲到底。",
+      color: "#4be3d0"
     }
   };
+
+  const LANE_COLORS = ["#ff6b9d", "#c084fc", "#4be3d0", "#ffd166"];
+  const KEYS = ["D", "F", "J", "K"];
+  const SPEEDS = [0.85, 1, 1.15, 1.3];
+  const WINDOW = { perfect: 45, great: 85, good: 125, bad: 165, miss: 190 };
+  const WEIGHT = { perfect: 1, great: 0.85, good: 0.6, bad: 0.3, miss: 0 };
+  const POINT = { perfect: 1000, great: 850, good: 600, bad: 300, miss: 0 };
+  const GRADE_NAME = { perfect: "PERFECT", great: "GREAT", good: "GOOD", bad: "BAD", miss: "MISS" };
 
   let els = null;
-  let state = null;
-  let active = false;
   let bound = false;
-  let dims = { w: 0, h: 0 };
-  let selectedDiff = "easy";
-  let toastFn = function () {};
+  let active = false;
+  let songs = [];
+  let selectedPack = "jack";
+  let selectedSong = null;
+  let speed = 1;
+  let audio = null;
+  let audioSongId = "";
+  let game = null;
+  let dims = { w: 0, h: 0, dpr: 1 };
+  let staticCanvas = null;
+  let sctx = null;
+  let skin = null;
+  let skinPromise = null;
+  let chartPromise = null;
+  let startToken = 0;
+  let countTimer = 0;
+  let lastMissFlash = 0;
+  let loadStep = "idle";
+  let loadError = "";
+  let unlockToken = 0;
 
-  /* ---------------- 音频合成 ---------------- */
-  function RhythmSound() {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) throw new Error("当前浏览器不支持 Web Audio");
-    this.ctx = new AC();
-    this.nodes = [];
-    this.noiseBuffer = this.makeNoise();
-
-    this.master = this.ctx.createGain();
-    this.master.gain.value = 0.52;
-    const comp = this.ctx.createDynamicsCompressor();
-    comp.threshold.value = -16;
-    comp.knee.value = 24;
-    comp.ratio.value = 6;
-    comp.attack.value = 0.004;
-    comp.release.value = 0.22;
-    this.master.connect(comp);
-    comp.connect(this.ctx.destination);
-
-    // 给旋律加一点回声，听起来更“星空”一点
-    this.delay = this.ctx.createDelay(1.0);
-    this.delay.delayTime.value = 0.29;
-    const feedback = this.ctx.createGain();
-    feedback.gain.value = 0.23;
-    const wet = this.ctx.createGain();
-    wet.gain.value = 0.16;
-    this.delay.connect(feedback);
-    feedback.connect(this.delay);
-    this.delay.connect(wet);
-    wet.connect(this.master);
-  }
-
-  RhythmSound.prototype.makeNoise = function () {
-    const len = Math.floor(this.ctx.sampleRate * 1.2);
-    const buffer = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-    return buffer;
-  };
-
-  RhythmSound.prototype.start = async function () {
-    if (this.ctx.state === "suspended") await this.ctx.resume();
-    this.startAt = this.ctx.currentTime + 0.3;
-    this.scheduleSong(this.startAt);
-    return this.startAt;
-  };
-
-  RhythmSound.prototype.now = function () {
-    return this.ctx.currentTime - this.startAt;
-  };
-
-  RhythmSound.prototype.stop = function () {
-    const ctx = this.ctx;
-    for (const node of this.nodes) {
-      try { node.stop(); } catch (e) { /* already stopped */ }
-    }
-    this.nodes = [];
-    try {
-      this.master.gain.cancelScheduledValues(ctx.currentTime);
-      this.master.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.03);
-    } catch (e) { /* ignore */ }
-    setTimeout(function () {
-      try { ctx.close(); } catch (e) { /* ignore */ }
-    }, 160);
-  };
-
-  RhythmSound.prototype.envelope = function (gain, time, peak, attack, decay, sustain) {
-    gain.gain.setValueAtTime(0.0001, time);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), time + attack);
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + attack + decay + (sustain || 0));
-  };
-
-  RhythmSound.prototype.kick = function (time) {
-    const o = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    o.type = "sine";
-    o.frequency.setValueAtTime(155, time);
-    o.frequency.exponentialRampToValueAtTime(44, time + 0.14);
-    this.envelope(g, time, 0.72, 0.004, 0.20);
-    o.connect(g);
-    g.connect(this.master);
-    o.start(time);
-    o.stop(time + 0.3);
-    this.nodes.push(o);
-  };
-
-  RhythmSound.prototype.snare = function (time) {
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.noiseBuffer;
-    const hp = this.ctx.createBiquadFilter();
-    hp.type = "highpass";
-    hp.frequency.value = 1100;
-    const g = this.ctx.createGain();
-    this.envelope(g, time, 0.2, 0.003, 0.14);
-    src.connect(hp);
-    hp.connect(g);
-    g.connect(this.master);
-    src.start(time);
-    src.stop(time + 0.22);
-    this.nodes.push(src);
-  };
-
-  RhythmSound.prototype.hat = function (time) {
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.noiseBuffer;
-    const hp = this.ctx.createBiquadFilter();
-    hp.type = "highpass";
-    hp.frequency.value = 7400;
-    const g = this.ctx.createGain();
-    this.envelope(g, time, 0.038, 0.002, 0.04);
-    src.connect(hp);
-    hp.connect(g);
-    g.connect(this.master);
-    src.start(time);
-    src.stop(time + 0.08);
-    this.nodes.push(src);
-  };
-
-  RhythmSound.prototype.bass = function (freq, time, dur, peak) {
-    const o = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = "lowpass";
-    lp.frequency.value = 420;
-    o.type = "triangle";
-    o.frequency.value = freq;
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(peak, time + 0.015);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
-    o.connect(lp);
-    lp.connect(g);
-    g.connect(this.master);
-    o.start(time);
-    o.stop(time + dur + 0.03);
-    this.nodes.push(o);
-  };
-
-  RhythmSound.prototype.pluck = function (freq, time, dur, peak) {
-    const o = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    const p = this.ctx.createStereoPanner();
-    p.pan.value = 0.12;
-    o.type = "sine";
-    o.frequency.value = freq;
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(peak, time + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
-    o.connect(g);
-    g.connect(p);
-    p.connect(this.master);
-    p.connect(this.delay);
-    o.start(time);
-    o.stop(time + dur + 0.03);
-    this.nodes.push(o);
-  };
-
-  RhythmSound.prototype.pad = function (freq, time, dur, peak, pan) {
-    for (let d = -1; d <= 1; d += 2) {
-      const o = this.ctx.createOscillator();
-      const g = this.ctx.createGain();
-      const p = this.ctx.createStereoPanner();
-      const lp = this.ctx.createBiquadFilter();
-      lp.type = "lowpass";
-      lp.frequency.value = 1200;
-      p.pan.value = pan * 0.45;
-      o.type = "triangle";
-      o.frequency.value = freq;
-      o.detune.value = d * 5;
-      g.gain.setValueAtTime(0.0001, time);
-      g.gain.exponentialRampToValueAtTime(peak, time + 0.55);
-      g.gain.setValueAtTime(peak, time + dur * 0.55);
-      g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
-      o.connect(lp);
-      lp.connect(g);
-      g.connect(p);
-      p.connect(this.master);
-      o.start(time);
-      o.stop(time + dur + 0.05);
-      this.nodes.push(o);
-    }
-  };
-
-  RhythmSound.prototype.hit = function (perfect) {
-    if (!this.ctx || this.ctx.state === "closed") return;
-    const t = this.ctx.currentTime + 0.001;
-    const o = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    o.type = "sine";
-    o.frequency.setValueAtTime(perfect ? 1320 : 990, t);
-    o.frequency.exponentialRampToValueAtTime(perfect ? 1760 : 1180, t + 0.04);
-    this.envelope(g, t, 0.055, 0.002, 0.07);
-    o.connect(g);
-    g.connect(this.master);
-    o.start(t);
-    o.stop(t + 0.12);
-  };
-
-  RhythmSound.prototype.miss = function () {
-    if (!this.ctx || this.ctx.state === "closed") return;
-    const t = this.ctx.currentTime + 0.001;
-    const o = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    o.type = "triangle";
-    o.frequency.setValueAtTime(140, t);
-    o.frequency.exponentialRampToValueAtTime(82, t + 0.1);
-    this.envelope(g, t, 0.045, 0.003, 0.12);
-    o.connect(g);
-    g.connect(this.master);
-    o.start(t);
-    o.stop(t + 0.18);
-  };
-
-  RhythmSound.prototype.scheduleSong = function (t0) {
-    const roots = [110, 87.31, 130.81, 98];
-    const chords = [
-      [220, 261.63, 329.63],
-      [174.61, 220, 261.63],
-      [261.63, 329.63, 392],
-      [196, 246.94, 293.66]
-    ];
-    const melodyPattern = [0, 2, 1, 3, 2, 0, 3, 1];
-
-    for (let bar = 0; bar < SONG_BEATS / 4; bar++) {
-      const barStart = t0 + bar * 4 * BEAT;
-      const chord = chords[bar % 4];
-
-      // 和弦铺底
-      for (let i = 0; i < chord.length; i++) {
-        this.pad(chord[i], barStart, 3.85 * BEAT, 0.019, i - 1);
-      }
-
-      for (let b = 0; b < 4; b++) {
-        const t = barStart + b * BEAT;
-        this.bass(roots[bar % 4] * (b === 3 ? 1.5 : 1), t, 0.42, b === 0 ? 0.105 : 0.07);
-        if (b === 0 || b === 2) this.kick(t);
-        if (b === 1 || b === 3) this.snare(t);
-        this.hat(t + BEAT * 0.5);
-      }
-
-      // 旋律：前两小节留白，让画面先进入
-      if (bar >= 2) {
-        for (let e = 0; e < 8; e++) {
-          const idx = melodyPattern[(bar * 8 + e) % melodyPattern.length];
-          let freq = chord[idx % chord.length];
-          if (e % 4 === 3) freq *= 2;
-          this.pluck(freq, barStart + e * 0.5 * BEAT, 0.22, e % 2 === 0 ? 0.04 : 0.028);
-        }
-      }
-    }
-  };
-
-  /* ---------------- 谱面 ---------------- */
-  function buildChart(diffKey) {
-    const cfg = DIFFS[diffKey];
-    const notes = [];
-    const seen = new Set();
-    let idx = 0;
-
-    function add(beat, lane) {
-      if (beat < 0 || beat >= SONG_BEATS) return;
-      const time = beat * BEAT;
-      const key = time.toFixed(3) + ":" + lane;
-      if (seen.has(key)) return;
-      seen.add(key);
-      notes.push({ time: time, lane: lane, judged: false, hit: false });
-    }
-
-    for (let beat = 8; beat < 60; beat += cfg.step) {
-      const lane = cfg.pattern[idx % cfg.pattern.length];
-      add(beat, lane);
-
-      if (cfg.extraEvery && idx % cfg.extraEvery === cfg.extraEvery - 1) {
-        add(beat + cfg.extraOffset, (lane + cfg.extraLaneShift) % LANES);
-      }
-      if (cfg.chordEvery && idx % cfg.chordEvery === 3) {
-        add(beat, (lane + 2) % LANES);
-      }
-      idx++;
-    }
-
-    notes.sort(function (a, b) { return a.time - b.time || a.lane - b.lane; });
-    return notes;
-  }
-
-  /* ---------------- DOM / 工具 ---------------- */
   function $(id) { return document.getElementById(id); }
+  function toast(message) {
+    document.dispatchEvent(new CustomEvent("site:toast", { detail: { message: message } }));
+  }
 
-  function cacheEls() {
+  /* ---------------- DOM ---------------- */
+  function cache() {
     els = {
+      select: $("rhythm-select"),
+      detail: $("rhythm-detail"),
+      play: $("rhythm-play"),
+      packTabs: $("pack-tabs"),
+      packStrip: $("pack-strip"),
+      packLabel: $("pack-label"),
+      packTitle: $("pack-title"),
+      packDesc: $("pack-desc"),
+      packCount: $("pack-count"),
+      grid: $("chart-grid"),
+      detailBg: $("detail-bg"),
+      detailBack: $("detail-back"),
+      detailCover: $("detail-cover"),
+      detailLevel: $("detail-level"),
+      detailPack: $("detail-pack"),
+      detailTitle: $("detail-title"),
+      detailArtist: $("detail-artist"),
+      detailBpm: $("detail-bpm"),
+      detailNotes: $("detail-notes"),
+      detailLn: $("detail-ln"),
+      detailMapper: $("detail-mapper"),
+      detailLength: $("detail-length"),
+      detailBest: $("detail-best"),
+      speedOptions: $("speed-options"),
+      detailStart: $("detail-start"),
+      playExit: $("play-exit"),
+      playTitle: $("play-title"),
+      playSub: $("play-sub"),
+      playTime: $("play-time"),
+      playFill: $("play-fill"),
+      playDuration: $("play-duration"),
       stage: $("rhythm-stage"),
       canvas: $("rhythm-canvas"),
-      start: $("rhythm-start"),
-      count: $("rhythm-count"),
-      countText: $("rhythm-count-text"),
-      result: $("rhythm-result"),
       score: $("rhythm-score"),
       combo: $("rhythm-combo"),
       acc: $("rhythm-acc"),
-      best: $("rhythm-best"),
-      startBtn: $("rhythm-start-btn"),
-      diffs: $("rhythm-difficulties"),
+      loading: $("rhythm-loading"),
+      loadingText: $("loading-text"),
+      count: $("rhythm-count"),
+      countText: $("rhythm-count-text"),
+      result: $("rhythm-result"),
       grade: $("rhythm-grade"),
       resultTitle: $("rhythm-result-title"),
       resultScore: $("rhythm-result-score"),
@@ -364,79 +107,868 @@
       resultCombo: $("rhythm-result-combo"),
       resultDetail: $("rhythm-result-detail"),
       retry: $("rhythm-retry"),
+      resultBack: $("rhythm-result-back"),
       judge: $("judge-pop"),
       lanePads: $("lane-pads")
     };
     els.ctx = els.canvas.getContext("2d");
+    els.ctx.imageSmoothingEnabled = true;
   }
 
-  function padScore(n) {
-    return String(Math.max(0, Math.round(n))).padStart(6, "0");
+  /* ---------------- 通用 ---------------- */
+  function formatTime(sec) {
+    if (!isFinite(sec) || sec < 0) sec = 0;
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return m + ":" + String(s).padStart(2, "0");
   }
-
   function formatAcc(n) {
     return (Math.round(n * 100) / 100).toFixed(2) + "%";
   }
-
-  function readBest(diff) {
-    try {
-      return parseInt(localStorage.getItem("rhythm-best-" + diff) || "0", 10) || 0;
-    } catch (e) { return 0; }
+  function padScore(n) {
+    return String(Math.max(0, Math.round(n))).padStart(7, "0");
   }
+  function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
 
-  function saveBest(diff, score) {
+  function readBest(id) {
+    try { return parseInt(localStorage.getItem("rhythm-best-" + id) || "0", 10) || 0; }
+    catch (e) { return 0; }
+  }
+  function saveBest(id, score) {
     try {
-      const key = "rhythm-best-" + diff;
-      if (score > (parseInt(localStorage.getItem(key) || "0", 10) || 0)) {
-        localStorage.setItem(key, String(score));
-      }
+      if (score > readBest(id)) localStorage.setItem("rhythm-best-" + id, String(score));
     } catch (e) { /* ignore */ }
   }
-
-  function refreshBest() {
-    const best = readBest(selectedDiff);
-    els.best.textContent = "本难度最高分：" + (best ? String(best) : "—");
+  function readSpeed() {
+    try {
+      const v = parseFloat(localStorage.getItem("rhythm-speed") || "1");
+      return SPEEDS.indexOf(v) >= 0 ? v : 1;
+    } catch (e) { return 1; }
+  }
+  function storeSpeed(v) {
+    try { localStorage.setItem("rhythm-speed", String(v)); } catch (e) { /* ignore */ }
   }
 
-  function updateDiffButtons() {
-    els.diffs.querySelectorAll("[data-diff]").forEach(function (btn) {
-      btn.classList.toggle("active", btn.dataset.diff === selectedDiff);
+  function levelColor(level) {
+    if (level >= 10) return "#ff5c9d";
+    if (level >= 8) return "#c084fc";
+    if (level >= 6) return "#63b3ff";
+    if (level >= 4) return "#4be3d0";
+    return "#8ef0a4";
+  }
+
+  /* ---------------- 选曲 ---------------- */
+  function enter() {
+    if (!songs.length) songs = window.RHYTHM_SONGS || [];
+    active = true;
+    if (!els) cache();
+    bindOnce();
+    stopGame();
+    selectedSong = null;
+    speed = readSpeed();
+    showScreen("select");
+    renderPack(selectedPack);
+    setupSkin();
+    requestAnimationFrame(resizeCanvas);
+  }
+
+  function exit() {
+    active = false;
+    startToken++;
+    stopGame();
+    if (els) {
+      els.play.hidden = true;
+      els.detail.hidden = true;
+      els.select.hidden = false;
+    }
+  }
+
+  function showScreen(name) {
+    if (!els) return;
+    els.select.hidden = name !== "select";
+    els.detail.hidden = name !== "detail";
+    els.play.hidden = name !== "play";
+    window.scrollTo(0, 0);
+    if (name === "play") requestAnimationFrame(resizeCanvas);
+  }
+
+  function renderPack(pack) {
+    if (!els) return;
+    selectedPack = pack;
+    const info = PACKS[pack];
+    els.packTabs.querySelectorAll("[data-pack]").forEach(function (btn) {
+      const on = btn.dataset.pack === pack;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
     });
-    refreshBest();
+    els.packLabel.textContent = info.label;
+    els.packLabel.style.color = info.color;
+    els.packTitle.textContent = info.title;
+    els.packDesc.textContent = info.desc;
+    els.packStrip.style.borderColor = info.color + "33";
+    els.packStrip.style.background =
+      "radial-gradient(circle at 85% 20%, " + info.color + "22, transparent 46%)," +
+      "linear-gradient(120deg, " + info.color + "14, rgba(12,15,27,.2))";
+    const list = songs.filter(function (s) { return s.pack === pack; })
+      .sort(function (a, b) { return a.level - b.level; });
+    els.packCount.textContent = String(list.length);
+    renderGrid(list);
   }
 
+  function renderGrid(list) {
+    els.grid.innerHTML = "";
+    const frag = document.createDocumentFragment();
+    list.forEach(function (song) {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "chart-card";
+      card.style.setProperty("--lv-color", levelColor(song.level));
+
+      const img = document.createElement("img");
+      img.src = song.cover;
+      img.alt = song.title + " 封面";
+      img.loading = "lazy";
+      img.decoding = "async";
+
+      const badge = document.createElement("span");
+      badge.className = "chart-badge";
+      badge.textContent = song.version;
+
+      const info = document.createElement("span");
+      info.className = "chart-info";
+      const name = document.createElement("strong");
+      name.textContent = song.title;
+      const artist = document.createElement("span");
+      artist.textContent = song.artist;
+      const stats = document.createElement("span");
+      stats.className = "chart-stats";
+      stats.innerHTML = "BPM <b>" + song.bpm + "</b> · <b>" + song.notes + "</b> notes";
+      info.appendChild(name);
+      info.appendChild(artist);
+      info.appendChild(stats);
+
+      card.appendChild(img);
+      card.appendChild(badge);
+      card.appendChild(info);
+      card.addEventListener("click", function () { selectSong(song); });
+      frag.appendChild(card);
+    });
+    els.grid.appendChild(frag);
+  }
+
+  function selectSong(song) {
+    if (!els) return;
+    selectedSong = song;
+    els.detailBg.src = song.cover;
+    els.detailCover.src = song.cover;
+    els.detailLevel.textContent = song.version;
+    els.detailPack.textContent = PACKS[song.pack].label + " / " + song.version;
+    els.detailTitle.textContent = song.title;
+    els.detailArtist.textContent = song.artist;
+    els.detailBpm.textContent = String(song.bpm);
+    els.detailNotes.textContent = String(song.notes);
+    els.detailLn.textContent = String(song.ln);
+    els.detailMapper.textContent = song.mapper || "—";
+    els.detailLength.textContent = formatTime(song.duration);
+    els.detailBest.textContent = "最高分：" + (readBest(song.id) ? readBest(song.id).toLocaleString("en-US") : "—");
+    setSpeedUI();
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+    preloadSong(song);
+    showScreen("detail");
+  }
+
+  function setSpeedUI() {
+    els.speedOptions.querySelectorAll("[data-speed]").forEach(function (btn) {
+      btn.classList.toggle("active", parseFloat(btn.dataset.speed) === speed);
+    });
+  }
+
+  /* ---------------- 音频 ---------------- */
+  function ensureAudio() {
+    if (audio) return audio;
+    audio = new Audio();
+    audio.preload = "auto";
+    audio.volume = 0.9;
+    audio.addEventListener("ended", function () {
+      if (active && game && game.running) finishGame();
+    });
+    audio.addEventListener("error", function () {
+      if (active && game && game.running) {
+        toast("音频加载失败，检查一下网络或换一张谱面");
+      }
+    });
+    return audio;
+  }
+
+  function preloadSong(song) {
+    const a = ensureAudio();
+    if (audioSongId !== song.id) {
+      audioSongId = song.id;
+      a.src = song.audio;
+      a.load();
+    }
+  }
+
+  // iOS Safari 等浏览器要求播放必须紧挨用户点击；先在点击时静音试播一下。
+  function unlockAudio() {
+    const a = ensureAudio();
+    const token = ++unlockToken;
+    a.volume = 0;
+    let promise;
+    try {
+      promise = a.play();
+    } catch (e) {
+      a.volume = 0.9;
+      return;
+    }
+    if (promise && promise.then) {
+      promise.then(function () {
+        if (token !== unlockToken) return;
+        if (!game || !game.running) {
+          a.pause();
+          try { a.currentTime = 0; } catch (e) { /* ignore */ }
+        }
+        a.volume = 0.9;
+      }).catch(function () {
+        a.volume = 0.9;
+      });
+    } else {
+      a.volume = 0.9;
+    }
+  }
+
+  function ensureAudioReady(song) {
+    const a = ensureAudio();
+    if (audioSongId !== song.id) {
+      audioSongId = song.id;
+      a.src = song.audio;
+      a.load();
+    }
+    if (a.error) return Promise.reject(new Error("audio error"));
+    if (a.readyState >= 3) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      let done = false;
+      const finish = function (ok, err) {
+        if (done) return;
+        done = true;
+        a.removeEventListener("canplay", onReady);
+        a.removeEventListener("canplaythrough", onReady);
+        a.removeEventListener("error", onError);
+        clearTimeout(timer);
+        if (ok) resolve();
+        else reject(err || new Error("audio load failed"));
+      };
+      const onReady = function () { finish(true); };
+      const onError = function () { finish(false, new Error("audio error")); };
+      const timer = setTimeout(function () { finish(false, new Error("audio timeout")); }, 15000);
+      a.addEventListener("canplay", onReady);
+      a.addEventListener("canplaythrough", onReady);
+      a.addEventListener("error", onError);
+      if (a.readyState >= 3) finish(true);
+    });
+  }
+
+  /* ---------------- 皮肤 ---------------- */
+  function loadImage(src) {
+    return new Promise(function (resolve) {
+      const img = new Image();
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { resolve(null); };
+      img.src = src;
+    });
+  }
+
+  function setupSkin() {
+    if (skinPromise) return skinPromise;
+    skinPromise = Promise.all([
+      loadImage("skin-note.png"),
+      loadImage("skin-ln.png"),
+      loadImage("skin-key-up.png"),
+      loadImage("skin-key-down.png")
+    ]).then(function (imgs) {
+      skin = {
+        tap: [],
+        ln: [],
+        keyUp: imgs[2],
+        keyDown: imgs[3]
+      };
+      for (let lane = 0; lane < 4; lane++) {
+        skin.tap[lane] = makeNoteSprite(imgs[0], LANE_COLORS[lane], false);
+        skin.ln[lane] = makeNoteSprite(imgs[1], LANE_COLORS[lane], true);
+      }
+      return skin;
+    }).catch(function () {
+      skin = { tap: [null, null, null, null], ln: [null, null, null, null], keyUp: null, keyDown: null };
+      return skin;
+    });
+    return skinPromise;
+  }
+
+  function makeNoteSprite(img, color, isLn) {
+    const size = 190;
+    const c = document.createElement("canvas");
+    c.width = size;
+    c.height = size;
+    const x = c.getContext("2d");
+    if (!img) {
+      x.fillStyle = color;
+      x.beginPath();
+      x.arc(size / 2, size / 2, size * 0.34, 0, Math.PI * 2);
+      x.fill();
+      return c;
+    }
+    const w = 150;
+    const h = 146;
+    const dx = (size - w) / 2;
+    const dy = (size - h) / 2;
+    x.save();
+    x.shadowColor = color;
+    x.shadowBlur = 16;
+    x.globalAlpha = 0.9;
+    x.drawImage(img, dx, dy, w, h);
+    x.restore();
+    x.save();
+    x.globalCompositeOperation = "source-atop";
+    x.globalAlpha = isLn ? 0.42 : 0.24;
+    x.fillStyle = color;
+    x.fillRect(0, 0, size, size);
+    x.restore();
+    x.strokeStyle = color;
+    x.globalAlpha = isLn ? 0.9 : 0.55;
+    x.lineWidth = isLn ? 3 : 2;
+    x.beginPath();
+    x.arc(size / 2, size / 2, 72, 0, Math.PI * 2);
+    x.stroke();
+    x.globalAlpha = 1;
+    return c;
+  }
+
+  /* ---------------- 谱面加载 ---------------- */
+  function loadCharts() {
+    if (window.RHYTHM_CHARTS) return Promise.resolve(window.RHYTHM_CHARTS);
+    if (chartPromise) return chartPromise;
+    chartPromise = new Promise(function (resolve, reject) {
+      const script = document.createElement("script");
+      script.src = "charts-data.js";
+      script.onload = function () {
+        if (window.RHYTHM_CHARTS) resolve(window.RHYTHM_CHARTS);
+        else {
+          chartPromise = null;
+          reject(new Error("chart data missing"));
+        }
+      };
+      script.onerror = function () {
+        chartPromise = null;
+        reject(new Error("chart data failed"));
+      };
+      document.head.appendChild(script);
+    });
+    return chartPromise;
+  }
+
+  /* ---------------- 开始 ---------------- */
+  async function startGame() {
+    if (!active || !selectedSong) return;
+    const song = selectedSong;
+    const token = ++startToken;
+    unlockAudio();
+    showScreen("play");
+    els.loading.hidden = false;
+    els.count.hidden = true;
+    els.result.hidden = true;
+    els.judge.className = "judge-pop";
+    els.loadingText.textContent = "正在加载谱面与音频…";
+    loadStep = "charts";
+    loadError = "";
+    els.playTitle.textContent = song.title;
+    els.playSub.textContent = PACKS[song.pack].label + " · " + song.version + " · " + song.artist;
+    els.playDuration.textContent = formatTime(song.duration);
+    els.playTime.textContent = "0:00";
+    els.playFill.style.width = "0%";
+    els.detailStart.disabled = true;
+    game = null;
+
+    try {
+      const charts = await loadCharts();
+      if (token !== startToken || !active) return;
+      loadStep = "skin";
+      els.loadingText.textContent = "正在加载 osu!mania 皮肤…";
+      await setupSkin();
+      if (token !== startToken || !active) return;
+      loadStep = "audio";
+      els.loadingText.textContent = "正在加载歌曲音频…";
+      await ensureAudioReady(song);
+      if (token !== startToken || !active) return;
+
+      loadStep = "ready";
+      const chart = charts[song.id];
+      if (!chart || !chart.notes || !chart.notes.length) throw new Error("empty chart");
+      game = createGame(song, chart);
+      els.loading.hidden = true;
+      els.loadingText.textContent = "准备中…";
+      resizeCanvas();
+      updateHud();
+      runCountdown(token);
+    } catch (err) {
+      loadStep = "error";
+      loadError = err && err.message ? err.message : String(err);
+      if (token !== startToken) return;
+      els.loading.hidden = true;
+      toast("谱面或音频加载失败，再试一次吧");
+      showScreen("detail");
+    } finally {
+      if (els) els.detailStart.disabled = false;
+    }
+  }
+
+  function createGame(song, chart) {
+    const notes = chart.notes.map(function (row) {
+      return {
+        time: row[0],
+        lane: row[1],
+        end: row[2] > row[0] ? row[2] : 0,
+        judged: false,
+        headHit: false,
+        holding: false,
+        tailJudged: false,
+        tailSkipped: false
+      };
+    }).filter(function (n) { return n.time >= 0 && n.lane >= 0 && n.lane < 4; });
+    notes.sort(function (a, b) { return a.time - b.time || a.lane - b.lane; });
+
+    const laneNotes = [[], [], [], []];
+    notes.forEach(function (n, i) { laneNotes[n.lane].push(i); });
+    const lnCount = notes.filter(function (n) { return n.end > 0; }).length;
+    const last = notes.length ? Math.max.apply(null, notes.map(function (n) { return n.end || n.time; })) : 0;
+    const travel = clamp((60000 / Math.max(60, song.bpm)) * 4 / speed, 580, 2600);
+
+    const g = {
+      song: song,
+      notes: notes,
+      laneNotes: laneNotes,
+      activeHolds: [null, null, null, null],
+      keyDown: [false, false, false, false],
+      lastRelease: [-10000, -10000, -10000, -10000],
+      laneGlow: [0, 0, 0, 0],
+      particles: [],
+      score: 0,
+      combo: 0,
+      maxCombo: 0,
+      perfect: 0,
+      great: 0,
+      good: 0,
+      bad: 0,
+      miss: 0,
+      judged: 0,
+      weighted: 0,
+      accuracy: 100,
+      running: false,
+      finished: false,
+      time: 0,
+      lastDraw: 0,
+      lastUi: 0,
+      lastFrame: 0,
+      raf: 0,
+      travel: travel,
+      lnCount: lnCount,
+      endAt: last + 2200,
+      missCursor: 0,
+      coverImage: null
+    };
+    g.coverImage = new Image();
+    g.coverImage.onload = function () { if (game === g) renderStatic(); };
+    g.coverImage.src = song.cover;
+    return g;
+  }
+
+  function runCountdown(token) {
+    if (!els || !game) return;
+    els.count.hidden = false;
+    let n = 3;
+    function step() {
+      if (token !== startToken || !active || !game) return;
+      els.countText.textContent = n > 0 ? String(n) : "GO";
+      els.countText.style.animation = "none";
+      void els.countText.offsetWidth;
+      els.countText.style.animation = "";
+      if (n > 0) {
+        n--;
+        countTimer = setTimeout(step, 560);
+      } else {
+        countTimer = setTimeout(function () { beginPlayback(token); }, 420);
+      }
+    }
+    step();
+  }
+
+  async function beginPlayback(token) {
+    if (token !== startToken || !active || !game) return;
+    els.count.hidden = true;
+    unlockToken++;
+    try {
+      audio.volume = 0.9;
+      audio.currentTime = 0;
+      await audio.play();
+    } catch (err) {
+      if (token !== startToken) return;
+      toast("浏览器没允许播放音频，请再点一次开始");
+      stopGame();
+      showScreen("detail");
+      return;
+    }
+    if (token !== startToken || !active || !game) {
+      audio.pause();
+      return;
+    }
+    game.running = true;
+    game.lastFrame = performance.now();
+    game.lastDraw = 0;
+    game.lastUi = 0;
+    game.raf = requestAnimationFrame(loop);
+  }
+
+  /* ---------------- 判定 ---------------- */
   function updateHud() {
-    if (!state) return;
-    els.score.textContent = padScore(state.score);
-    els.combo.textContent = String(state.combo);
-    els.acc.textContent = formatAcc(state.accuracy);
+    if (!els || !game) {
+      if (els) {
+        els.score.textContent = "0000000";
+        els.combo.textContent = "0";
+        els.acc.textContent = "100.00%";
+      }
+      return;
+    }
+    els.score.textContent = padScore(game.score);
+    els.combo.textContent = String(game.combo);
+    els.acc.textContent = formatAcc(game.accuracy);
   }
 
-  function flashJudge(text, type) {
-    els.judge.textContent = text;
-    els.judge.className = "judge-pop " + type;
+  function flashJudge(kind) {
+    if (!els) return;
+    els.judge.textContent = GRADE_NAME[kind] || "MISS";
+    els.judge.className = "judge-pop " + kind;
     void els.judge.offsetWidth;
     els.judge.classList.add("show");
   }
 
+  function registerHit(kind, isTail, lane) {
+    if (!game) return;
+    game.judged++;
+    game[kind]++;
+    game.weighted += WEIGHT[kind];
+    game.score += POINT[kind];
+    game.combo++;
+    game.maxCombo = Math.max(game.maxCombo, game.combo);
+    game.accuracy = game.judged ? (game.weighted / game.judged) * 100 : 100;
+    flashJudge(kind);
+    spawnBurst(lane, isTail ? 7 : (kind === "perfect" ? 10 : 6));
+    updateHud();
+  }
+
+  function registerMiss() {
+    if (!game) return;
+    game.judged++;
+    game.miss++;
+    game.combo = 0;
+    game.accuracy = game.judged ? (game.weighted / game.judged) * 100 : 100;
+    const now = performance.now();
+    if (now - lastMissFlash > 90) {
+      lastMissFlash = now;
+      flashJudge("miss");
+    }
+    updateHud();
+  }
+
+  function gradeFor(delta) {
+    if (delta <= WINDOW.perfect) return "perfect";
+    if (delta <= WINDOW.great) return "great";
+    if (delta <= WINDOW.good) return "good";
+    if (delta <= WINDOW.bad) return "bad";
+    return null;
+  }
+
+  function lowerBound(arr, t) {
+    let lo = 0;
+    let hi = arr.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid].time < t) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function laneLowerBound(lane, t) {
+    const arr = game.laneNotes[lane];
+    let lo = 0;
+    let hi = arr.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (game.notes[arr[mid]].time < t) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function pressLane(lane) {
+    if (!active || !game || !game.running || game.finished) return;
+    if (game.keyDown[lane]) return;
+    game.keyDown[lane] = true;
+    game.laneGlow[lane] = performance.now();
+    setPadPressed(lane, true);
+
+    const t = game.time;
+    const activeHold = game.activeHolds[lane];
+    if (activeHold && t <= activeHold.end) activeHold.holding = true;
+
+    const arr = game.laneNotes[lane];
+    const start = laneLowerBound(lane, t);
+    let best = null;
+    let bestDelta = Infinity;
+    for (let i = Math.max(0, start - 6); i < Math.min(arr.length, start + 8); i++) {
+      const note = game.notes[arr[i]];
+      if (note.judged) continue;
+      const d = Math.abs(note.time - t);
+      if (d < bestDelta) {
+        bestDelta = d;
+        best = note;
+      }
+    }
+    if (!best || bestDelta > WINDOW.bad) return;
+
+    const kind = gradeFor(bestDelta);
+    if (!kind) return;
+    best.judged = true;
+    best.headHit = true;
+    if (best.end > 0) {
+      best.holding = true;
+      game.activeHolds[lane] = best;
+    }
+    registerHit(kind, false, lane);
+  }
+
+  function releaseLane(lane) {
+    if (!game) return;
+    game.keyDown[lane] = false;
+    game.lastRelease[lane] = performance.now();
+    const hold = game.activeHolds[lane];
+    if (hold) hold.holding = false;
+    setPadPressed(lane, false);
+  }
+
+  function setPadPressed(lane, on) {
+    if (!els) return;
+    const pad = els.lanePads.querySelector('[data-lane="' + lane + '"]');
+    if (pad) pad.classList.toggle("pressed", !!on);
+  }
+
+  function updateGame(t, dt) {
+    if (!game || !game.running) return;
+
+    // 错过的单点 / 长条头部
+    while (game.missCursor < game.notes.length) {
+      const note = game.notes[game.missCursor];
+      if (note.time >= t - WINDOW.miss) break;
+      if (!note.judged) {
+        note.judged = true;
+        if (note.end > 0) {
+          note.tailSkipped = true;
+          note.tailJudged = true;
+        }
+        registerMiss();
+      }
+      game.missCursor++;
+    }
+
+    // 长条尾巴：到点还按着（或刚松开 90ms 内）才算完成
+    for (let lane = 0; lane < 4; lane++) {
+      const hold = game.activeHolds[lane];
+      if (!hold || hold.tailJudged) continue;
+      if (t >= hold.end) {
+        const held = game.keyDown[lane] ||
+          (performance.now() - game.lastRelease[lane] <= 90);
+        hold.tailJudged = true;
+        game.activeHolds[lane] = null;
+        if (held) registerHit("perfect", true, lane);
+        else registerMiss();
+      }
+    }
+
+    for (const p of game.particles) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 620 * dt;
+      p.life -= dt;
+    }
+    game.particles = game.particles.filter(function (p) { return p.life > 0; });
+
+    if (t > game.endAt) finishGame();
+  }
+
+  function spawnBurst(lane, count) {
+    if (!game || !dims.w) return;
+    const layout = getLayout();
+    const chosen = lane;
+    const x = layout.boardX + chosen * layout.laneW + layout.laneW / 2;
+    const y = layout.judgeY;
+    for (let i = 0; i < count; i++) {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 2.2;
+      const speed = 80 + Math.random() * 170;
+      game.particles.push({
+        x: x + (Math.random() - 0.5) * layout.laneW * 0.32,
+        y: y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0.3 + Math.random() * 0.28,
+        maxLife: 0.58,
+        color: LANE_COLORS[chosen]
+      });
+    }
+    if (game.particles.length > 110) {
+      game.particles.splice(0, game.particles.length - 110);
+    }
+  }
+
+  function finishGame() {
+    if (!game || game.finished) return;
+    game.finished = true;
+    game.running = false;
+    cancelAnimationFrame(game.raf);
+    game.raf = 0;
+    if (audio) audio.pause();
+
+    for (const note of game.notes) {
+      if (!note.judged) {
+        note.judged = true;
+        game.judged++;
+        game.miss++;
+        if (note.end > 0) {
+          note.tailSkipped = true;
+          note.tailJudged = true;
+        }
+      }
+    }
+    for (let lane = 0; lane < 4; lane++) {
+      const hold = game.activeHolds[lane];
+      if (hold && !hold.tailJudged) {
+        hold.tailJudged = true;
+        game.judged++;
+        game.miss++;
+      }
+      game.activeHolds[lane] = null;
+    }
+    game.combo = 0;
+    game.accuracy = game.judged ? (game.weighted / game.judged) * 100 : 100;
+    updateHud();
+    els.playFill.style.width = "100%";
+
+    let grade = "D";
+    if (game.accuracy >= 98) grade = "S";
+    else if (game.accuracy >= 95) grade = "A";
+    else if (game.accuracy >= 90) grade = "B";
+    else if (game.accuracy >= 80) grade = "C";
+
+    els.grade.textContent = grade;
+    els.resultTitle.textContent = grade === "S" ? "太强了，收下我的膝盖" :
+      grade === "A" ? "漂亮，节奏感拉满" :
+      grade === "B" ? "不错，再来一次？" : "别灰心，熟能生巧";
+    els.resultScore.textContent = game.score.toLocaleString("en-US");
+    els.resultAcc.textContent = formatAcc(game.accuracy);
+    els.resultCombo.textContent = String(game.maxCombo);
+    els.resultDetail.textContent =
+      "Perfect " + game.perfect + " · Great " + game.great +
+      " · Good " + game.good + " · Bad " + game.bad + " · Miss " + game.miss;
+    els.result.hidden = false;
+    els.loading.hidden = true;
+    els.count.hidden = true;
+    els.judge.className = "judge-pop";
+    saveBest(game.song.id, game.score);
+    const best = readBest(game.song.id);
+    els.detailBest.textContent = "最高分：" + (best ? best.toLocaleString("en-US") : "—");
+  }
+
+  /* ---------------- 主循环 ---------------- */
+  function loop(ts) {
+    if (!game || !game.running) return;
+    const t = Math.max(0, audio.currentTime * 1000);
+    const dt = clamp((t - game.time) / 1000, 0, 0.05);
+    game.time = t;
+    updateGame(t, dt);
+    if (game.running && (!game.lastDraw || ts - game.lastDraw >= 14)) {
+      drawFrame(t);
+      game.lastDraw = ts;
+    }
+    if (game.running && (!game.lastUi || t - game.lastUi >= 100)) {
+      updateProgress(t);
+      game.lastUi = t;
+    }
+    if (game.running) game.raf = requestAnimationFrame(loop);
+  }
+
+  function updateProgress(t) {
+    if (!game || !els) return;
+    const fill = clamp(t / game.endAt * 100, 0, 100);
+    els.playFill.style.width = fill.toFixed(2) + "%";
+    els.playTime.textContent = formatTime(Math.min(t / 1000, game.song.duration));
+    els.playDuration.textContent = formatTime(game.song.duration);
+  }
+
+  /* ---------------- Canvas ---------------- */
+  function getLayout() {
+    const w = dims.w;
+    const h = dims.h;
+    const boardW = Math.min(w - (w < 640 ? 24 : 72), 680);
+    const boardX = (w - boardW) / 2;
+    const laneW = boardW / 4;
+    const judgeY = h * 0.78;
+    return { w: w, h: h, boardW: boardW, boardX: boardX, laneW: laneW, judgeY: judgeY };
+  }
+
   function resizeCanvas() {
-    if (!els || !els.stage) return;
+    if (!els || !els.stage || els.play.hidden) return;
     const rect = els.stage.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    dims = { w: rect.width, h: rect.height, dpr: dpr };
     els.canvas.width = Math.round(rect.width * dpr);
     els.canvas.height = Math.round(rect.height * dpr);
     els.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    dims.w = rect.width;
-    dims.h = rect.height;
+    els.ctx.imageSmoothingEnabled = true;
+    staticCanvas = document.createElement("canvas");
+    staticCanvas.width = els.canvas.width;
+    staticCanvas.height = els.canvas.height;
+    sctx = staticCanvas.getContext("2d");
+    sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    sctx.imageSmoothingEnabled = true;
+    renderStatic();
+    if (game) drawFrame(game.time);
+  }
+
+  function drawCoverFit(ctx, img, x, y, w, h) {
+    const ir = img.width / img.height;
+    const br = w / h;
+    let dw, dh, dx, dy;
+    if (ir > br) {
+      dh = h;
+      dw = h * ir;
+      dx = x + (w - dw) / 2;
+      dy = y;
+    } else {
+      dw = w;
+      dh = w / ir;
+      dx = x;
+      dy = y + (h - dh) / 2;
+    }
+    ctx.drawImage(img, dx, dy, dw, dh);
   }
 
   function roundRect(ctx, x, y, w, h, r) {
     const rr = Math.min(r, w / 2, h / 2);
     ctx.beginPath();
-    if (ctx.roundRect) {
-      ctx.roundRect(x, y, w, h, rr);
-    } else {
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, rr);
+    else {
       ctx.moveTo(x + rr, y);
       ctx.arcTo(x + w, y, x + w, y + h, rr);
       ctx.arcTo(x + w, y + h, x, y + h, rr);
@@ -446,478 +978,235 @@
     }
   }
 
-  /* ---------------- 游戏状态 ---------------- */
-  function makeState(diffKey) {
-    return {
-      diffKey: diffKey,
-      diff: DIFFS[diffKey],
-      notes: buildChart(diffKey),
-      score: 0,
-      combo: 0,
-      maxCombo: 0,
-      perfect: 0,
-      good: 0,
-      miss: 0,
-      judged: 0,
-      accuracy: 100,
-      running: false,
-      phase: "idle",
-      raf: 0,
-      timer: 0,
-      token: 0,
-      sound: null,
-      perfStart: 0,
-      lastFrame: 0,
-      particles: [],
-      laneFlash: [0, 0, 0, 0],
-      finished: false
-    };
-  }
+  function renderStatic() {
+    if (!sctx || !dims.w || !dims.h) return;
+    const L = getLayout();
+    const ctx = sctx;
+    ctx.clearRect(0, 0, L.w, L.h);
 
-  function stopAudio() {
-    if (state && state.sound) {
-      try { state.sound.stop(); } catch (e) { /* ignore */ }
-      state.sound = null;
+    // 封面做很淡的背景
+    if (game && game.coverImage && game.coverImage.complete && game.coverImage.naturalWidth) {
+      ctx.save();
+      ctx.globalAlpha = 0.2;
+      drawCoverFit(ctx, game.coverImage, 0, 0, L.w, L.h);
+      ctx.restore();
     }
-  }
+    const bg = ctx.createLinearGradient(0, 0, 0, L.h);
+    bg.addColorStop(0, "rgba(6,8,16,0.82)");
+    bg.addColorStop(0.55, "rgba(7,9,18,0.65)");
+    bg.addColorStop(1, "rgba(9,11,22,0.95)");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, L.w, L.h);
 
-  function clearTimers() {
-    if (!state) return;
-    if (state.raf) cancelAnimationFrame(state.raf);
-    if (state.timer) clearTimeout(state.timer);
-    state.raf = 0;
-    state.timer = 0;
-  }
-
-  function stopGame() {
-    if (state) {
-      state.running = false;
-      state.phase = "idle";
-      state.token++;
-      clearTimers();
-      stopAudio();
-    }
-  }
-
-  function showStartScreen() {
-    if (!els) return;
-    els.start.hidden = false;
-    els.result.hidden = true;
-    els.count.hidden = true;
-    els.judge.className = "judge-pop";
-    updateDiffButtons();
-    state = makeState(selectedDiff);
-    state.phase = "ready";
-    els.score.textContent = "000000";
-    els.combo.textContent = "0";
-    els.acc.textContent = "100.00%";
-    resizeCanvas();
-    drawFrame(0, 0);
-  }
-
-  /* ---------------- 倒计时与开始 ---------------- */
-  function beginCountdown() {
-    if (!active) return;
-    stopGame();
-    state = makeState(selectedDiff);
-    state.phase = "countdown";
-    els.start.hidden = true;
-    els.result.hidden = true;
-    els.count.hidden = false;
-    els.judge.className = "judge-pop";
-    els.score.textContent = "000000";
-    els.combo.textContent = "0";
-    els.acc.textContent = "100.00%";
-    resizeCanvas();
-
-    let n = 3;
-    function step() {
-      if (!active || !state || state.phase !== "countdown") return;
-      els.countText.textContent = n > 0 ? String(n) : "GO";
-      els.countText.style.animation = "none";
-      void els.countText.offsetWidth;
-      els.countText.style.animation = "";
-      if (n > 0) {
-        n--;
-        state.timer = setTimeout(step, 620);
-      } else {
-        state.timer = setTimeout(startPlayback, 480);
-      }
-    }
-    step();
-  }
-
-  async function startPlayback() {
-    if (!active || !state || state.phase !== "countdown") return;
-    const token = ++state.token;
-    els.count.hidden = true;
-
-    let sound = null;
-    try {
-      sound = new RhythmSound();
-      await sound.start();
-    } catch (err) {
-      if (sound) {
-        try { sound.stop(); } catch (e) { /* ignore */ }
-      }
-      sound = null;
-    }
-
-    if (!active || !state || state.token !== token || state.phase !== "countdown") {
-      if (sound) { try { sound.stop(); } catch (e) { /* ignore */ } }
-      return;
-    }
-
-    state.sound = sound;
-    state.perfStart = performance.now();
-    state.lastFrame = state.perfStart;
-    state.running = true;
-    state.phase = "playing";
-    state.raf = requestAnimationFrame(loop);
-  }
-
-  /* ---------------- 主循环 ---------------- */
-  function gameTime() {
-    if (state.sound) return state.sound.now();
-    return (performance.now() - state.perfStart) / 1000;
-  }
-
-  function loop() {
-    if (!active || !state || !state.running) return;
-    const now = performance.now();
-    const dt = Math.min(0.05, Math.max(0, (now - state.lastFrame) / 1000));
-    state.lastFrame = now;
-    const t = gameTime();
-
-    updateGame(t, dt);
-    drawFrame(t, dt);
-
-    if (state.running) state.raf = requestAnimationFrame(loop);
-  }
-
-  function updateGame(t, dt) {
-    if (!state || !state.running) return;
-
-    for (const note of state.notes) {
-      if (!note.judged && t > note.time + HIT_WINDOW) {
-        note.judged = true;
-        registerMiss(false);
-      }
-    }
-
-    // 粒子
-    for (const p of state.particles) {
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.vy += 520 * dt;
-      p.life -= dt;
-    }
-    state.particles = state.particles.filter(function (p) { return p.life > 0; });
-
-    if (t > SONG_LENGTH + 0.45) finishGame();
-  }
-
-  function registerMiss(playSound) {
-    if (!state) return;
-    state.miss++;
-    state.judged++;
-    state.combo = 0;
-    state.accuracy = state.judged ? ((state.perfect + state.good * 0.6) / state.judged) * 100 : 100;
-    updateHud();
-    flashJudge("MISS", "miss");
-    if (playSound && state.sound) {
-      try { state.sound.miss(); } catch (e) { /* ignore */ }
-    }
-  }
-
-  function hitLane(lane) {
-    if (!active || !state || !state.running) return;
-    const t = gameTime();
-    state.laneFlash[lane] = performance.now();
-
-    let best = null;
-    let bestDelta = Infinity;
-    for (const note of state.notes) {
-      if (note.judged || note.lane !== lane) continue;
-      const delta = Math.abs(note.time - t);
-      if (delta < bestDelta) {
-        bestDelta = delta;
-        best = note;
-      }
-    }
-
-    if (!best || bestDelta > HIT_WINDOW) return;
-
-    best.judged = true;
-    best.hit = true;
-    const perfect = bestDelta <= PERFECT_WINDOW;
-    state.judged++;
-    if (perfect) {
-      state.perfect++;
-      state.score += 1000;
-      flashJudge("PERFECT", "perfect");
-    } else {
-      state.good++;
-      state.score += 600;
-      flashJudge("GOOD", "good");
-    }
-    state.combo++;
-    state.maxCombo = Math.max(state.maxCombo, state.combo);
-    state.accuracy = ((state.perfect + state.good * 0.6) / state.judged) * 100;
-    updateHud();
-    spawnParticles(lane, perfect);
-    if (state.sound) {
-      try { state.sound.hit(perfect); } catch (e) { /* ignore */ }
-    }
-  }
-
-  function spawnParticles(lane, perfect) {
-    if (!state) return;
-    const boardW = Math.min(dims.w - 40, 640);
-    const x0 = (dims.w - boardW) / 2;
-    const laneW = boardW / LANES;
-    const x = x0 + lane * laneW + laneW / 2;
-    const y = dims.h * 0.82;
-    const count = perfect ? 9 : 5;
-    for (let i = 0; i < count; i++) {
-      const angle = (-Math.PI / 2) + (Math.random() - 0.5) * 2.2;
-      const speed = 70 + Math.random() * 150;
-      state.particles.push({
-        x: x + (Math.random() - 0.5) * laneW * 0.3,
-        y: y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        life: 0.35 + Math.random() * 0.3,
-        maxLife: 0.65,
-        color: LANE_COLORS[lane]
-      });
-    }
-  }
-
-  function finishGame() {
-    if (!state || state.finished) return;
-    state.finished = true;
-    state.running = false;
-    clearTimers();
-
-    for (const note of state.notes) {
-      if (!note.judged) {
-        note.judged = true;
-        state.miss++;
-        state.judged++;
-      }
-    }
-    state.combo = 0;
-    state.accuracy = state.judged ? ((state.perfect + state.good * 0.6) / state.judged) * 100 : 100;
-    stopAudio();
-    updateHud();
-
-    const acc = state.accuracy;
-    let grade = "D";
-    if (acc >= 98) grade = "S";
-    else if (acc >= 95) grade = "A";
-    else if (acc >= 90) grade = "B";
-    else if (acc >= 80) grade = "C";
-
-    els.grade.textContent = grade;
-    els.resultTitle.textContent = grade === "S" ? "太强了，全连之神！" : grade === "A" ? "漂亮！节奏感拉满" : grade === "B" ? "不错，再来一次？" : "别灰心，熟能生巧";
-    els.resultScore.textContent = String(state.score);
-    els.resultAcc.textContent = formatAcc(acc);
-    els.resultCombo.textContent = String(state.maxCombo);
-    els.resultDetail.textContent = "Perfect " + state.perfect + " · Good " + state.good + " · Miss " + state.miss;
-    els.result.hidden = false;
-    els.judge.className = "judge-pop";
-    saveBest(state.diffKey, state.score);
-    refreshBest();
-  }
-
-  /* ---------------- 绘制 ---------------- */
-  function drawFrame(t, dt) {
-    if (!els || !dims.w || !dims.h) return;
-    const ctx = els.ctx;
-    const w = dims.w;
-    const h = dims.h;
-    const boardW = Math.min(w - 40, 640);
-    const x0 = (w - boardW) / 2;
-    const laneW = boardW / LANES;
-    const judgeY = h * 0.82;
-    const travel = state ? state.diff.travel : 1.7;
-    const spawnY = -34;
-
-    ctx.clearRect(0, 0, w, h);
-
-    // 顶部氛围光
-    const glow = ctx.createRadialGradient(w / 2, h, 0, w / 2, h, h * 0.9);
-    glow.addColorStop(0, "rgba(154,107,255,0.16)");
-    glow.addColorStop(1, "rgba(154,107,255,0)");
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, w, h);
-
-    // 轨道底板
     ctx.save();
-    roundRect(ctx, x0, 0, boardW, h, 14);
+    roundRect(ctx, L.boardX, 0, L.boardW, L.h, 14);
     ctx.clip();
 
-    const bg = ctx.createLinearGradient(0, 0, 0, h);
-    bg.addColorStop(0, "rgba(8,11,22,0.2)");
-    bg.addColorStop(0.7, "rgba(10,13,26,0.72)");
-    bg.addColorStop(1, "rgba(15,19,36,0.9)");
-    ctx.fillStyle = bg;
-    ctx.fillRect(x0, 0, boardW, h);
+    const boardBg = ctx.createLinearGradient(0, 0, 0, L.h);
+    boardBg.addColorStop(0, "rgba(4,6,13,0.36)");
+    boardBg.addColorStop(0.72, "rgba(5,7,15,0.78)");
+    boardBg.addColorStop(1, "rgba(9,12,24,0.94)");
+    ctx.fillStyle = boardBg;
+    ctx.fillRect(L.boardX, 0, L.boardW, L.h);
 
-    for (let i = 0; i < LANES; i++) {
-      const lx = x0 + i * laneW;
-      ctx.fillStyle = i % 2 === 0 ? "rgba(255,255,255,0.018)" : "rgba(0,0,0,0.09)";
-      ctx.fillRect(lx, 0, laneW, h);
-
-      const flash = state ? Math.max(0, 1 - (performance.now() - state.laneFlash[i]) / 260) : 0;
-      if (flash > 0) {
-        const lg = ctx.createLinearGradient(0, judgeY - 180, 0, judgeY);
-        lg.addColorStop(0, "rgba(255,255,255,0)");
-        lg.addColorStop(1, LANE_COLORS[i]);
-        ctx.globalAlpha = flash * 0.13;
-        ctx.fillStyle = lg;
-        ctx.fillRect(lx, judgeY - 180, laneW, 180);
-        ctx.globalAlpha = 1;
-      }
+    for (let i = 0; i < 4; i++) {
+      const x = L.boardX + i * L.laneW;
+      ctx.fillStyle = i % 2 === 0 ? "rgba(255,255,255,0.014)" : "rgba(0,0,0,0.08)";
+      ctx.fillRect(x, 0, L.laneW, L.h);
     }
-
-    // 横向节拍线，让画面有流动感
-    const beatNow = t / BEAT;
-    const firstBeat = Math.floor(beatNow) - 2;
-    for (let b = firstBeat; b < firstBeat + 12; b++) {
-      if (b < 0) continue;
-      const y = judgeY - ((b * BEAT - t) / travel) * (judgeY - spawnY);
-      if (y < -2 || y > judgeY + 40) continue;
-      const strong = b % 4 === 0;
-      ctx.strokeStyle = strong ? "rgba(255,255,255,0.075)" : "rgba(255,255,255,0.03)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x0, y);
-      ctx.lineTo(x0 + boardW, y);
-      ctx.stroke();
-    }
-
-    // 轨道分隔线
-    for (let i = 1; i < LANES; i++) {
-      const lx = x0 + i * laneW;
+    for (let i = 1; i < 4; i++) {
+      const x = L.boardX + i * L.laneW;
       ctx.strokeStyle = "rgba(255,255,255,0.055)";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(lx, 0);
-      ctx.lineTo(lx, h);
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, L.h);
       ctx.stroke();
     }
 
-    // 音符
-    if (state && state.notes) {
-      for (const note of state.notes) {
-        if (note.judged) continue;
-        const dtNote = note.time - t;
-        if (dtNote > travel || dtNote < -HIT_WINDOW) continue;
-        const y = judgeY - (dtNote / travel) * (judgeY - spawnY);
-        const cx = x0 + note.lane * laneW + laneW / 2;
-        const nw = Math.max(34, laneW * 0.62);
-        const nh = 13;
-        const near = Math.max(0, Math.min(1, 1 - Math.abs(dtNote) / 0.35));
-
-        ctx.save();
-        ctx.shadowColor = LANE_COLORS[note.lane];
-        ctx.shadowBlur = 16 + near * 14;
-        const ng = ctx.createLinearGradient(cx - nw / 2, y - nh / 2, cx + nw / 2, y + nh / 2);
-        ng.addColorStop(0, LANE_COLORS[note.lane]);
-        ng.addColorStop(0.55, "#ffffff");
-        ng.addColorStop(1, LANE_COLORS[note.lane]);
-        ctx.fillStyle = ng;
-        roundRect(ctx, cx - nw / 2, y - nh / 2, nw, nh, 6);
-        ctx.fill();
-        ctx.restore();
-
-        if (near > 0.35) {
-          ctx.fillStyle = "rgba(255,255,255," + (near * 0.8).toFixed(2) + ")";
-          roundRect(ctx, cx - nw * 0.26, y - 2, nw * 0.52, 4, 2);
-          ctx.fill();
-        }
-      }
-    }
+    // 顶部和底部渐隐
+    const topFade = ctx.createLinearGradient(0, 0, 0, 110);
+    topFade.addColorStop(0, "rgba(5,7,15,0.92)");
+    topFade.addColorStop(1, "rgba(5,7,15,0)");
+    ctx.fillStyle = topFade;
+    ctx.fillRect(L.boardX, 0, L.boardW, 110);
+    const bottomFade = ctx.createLinearGradient(0, L.judgeY + 50, 0, L.h);
+    bottomFade.addColorStop(0, "rgba(5,7,15,0)");
+    bottomFade.addColorStop(1, "rgba(5,7,15,0.9)");
+    ctx.fillStyle = bottomFade;
+    ctx.fillRect(L.boardX, L.judgeY + 50, L.boardW, L.h - L.judgeY - 50);
 
     // 判定线
-    const lineGrad = ctx.createLinearGradient(x0, 0, x0 + boardW, 0);
-    lineGrad.addColorStop(0, "rgba(255,255,255,0)");
-    lineGrad.addColorStop(0.15, "rgba(255,255,255,0.75)");
-    lineGrad.addColorStop(0.5, "#ffffff");
-    lineGrad.addColorStop(0.85, "rgba(255,255,255,0.75)");
-    lineGrad.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.save();
-    ctx.shadowColor = "rgba(255,92,157,0.85)";
-    ctx.shadowBlur = 18;
-    ctx.strokeStyle = lineGrad;
-    ctx.lineWidth = 2;
+    const line = ctx.createLinearGradient(L.boardX, 0, L.boardX + L.boardW, 0);
+    line.addColorStop(0, "rgba(255,255,255,0)");
+    line.addColorStop(0.12, "rgba(255,255,255,0.7)");
+    line.addColorStop(0.5, "#ffffff");
+    line.addColorStop(0.88, "rgba(255,255,255,0.7)");
+    line.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
-    ctx.moveTo(x0, judgeY);
-    ctx.lineTo(x0 + boardW, judgeY);
+    ctx.moveTo(L.boardX, L.judgeY);
+    ctx.lineTo(L.boardX + L.boardW, L.judgeY);
     ctx.stroke();
-    ctx.restore();
 
-    // 判定线下方按键标签
-    for (let i = 0; i < LANES; i++) {
-      const cx = x0 + i * laneW + laneW / 2;
+    for (let i = 0; i < 4; i++) {
+      const x = L.boardX + i * L.laneW + L.laneW / 2;
       ctx.fillStyle = "rgba(255,255,255,0.22)";
-      ctx.font = "600 10px " + "Consolas, monospace";
+      ctx.font = "600 10px Consolas, monospace";
       ctx.textAlign = "center";
-      ctx.fillText(KEY_LABELS[i], cx, h - 18);
+      ctx.fillText(KEYS[i], x, L.h - 8);
     }
-
-    // 粒子
-    if (state && state.particles.length) {
-      for (const p of state.particles) {
-        const alpha = Math.max(0, p.life / p.maxLife);
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 2.4, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-    }
-
-    // 顶部 / 底部渐隐
-    const fadeTop = ctx.createLinearGradient(0, 0, 0, 110);
-    fadeTop.addColorStop(0, "rgba(6,8,16,0.85)");
-    fadeTop.addColorStop(1, "rgba(6,8,16,0)");
-    ctx.fillStyle = fadeTop;
-    ctx.fillRect(x0, 0, boardW, 110);
-    const fadeBottom = ctx.createLinearGradient(0, h - 90, 0, h);
-    fadeBottom.addColorStop(0, "rgba(6,8,16,0)");
-    fadeBottom.addColorStop(1, "rgba(6,8,16,0.75)");
-    ctx.fillStyle = fadeBottom;
-    ctx.fillRect(x0, h - 90, boardW, 90);
-
     ctx.restore();
 
-    // 进度条
-    ctx.fillStyle = "rgba(255,255,255,0.06)";
-    ctx.fillRect(x0, 0, boardW, 2);
-    if (state && state.running) {
-      const progress = Math.max(0, Math.min(1, t / SONG_LENGTH));
-      const pg = ctx.createLinearGradient(x0, 0, x0 + boardW, 0);
-      pg.addColorStop(0, "#ff5c9d");
-      pg.addColorStop(1, "#4be3d0");
-      ctx.fillStyle = pg;
-      ctx.fillRect(x0, 0, boardW * progress, 2);
+    // 两侧细边
+    ctx.strokeStyle = "rgba(255,255,255,0.055)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(L.boardX + 0.5, 0.5, L.boardW - 1, L.h - 1);
+  }
+
+  function drawFrame(t) {
+    if (!els || !dims.w || !game) return;
+    const L = getLayout();
+    const ctx = els.ctx;
+    ctx.clearRect(0, 0, L.w, L.h);
+    if (staticCanvas) ctx.drawImage(staticCanvas, 0, 0, L.w, L.h);
+
+    // 按键轨道光
+    const now = performance.now();
+    for (let lane = 0; lane < 4; lane++) {
+      const elapsed = now - game.laneGlow[lane];
+      if (elapsed >= 0 && elapsed < 160) {
+        ctx.globalAlpha = (1 - elapsed / 160) * 0.1;
+        ctx.fillStyle = LANE_COLORS[lane];
+        ctx.fillRect(L.boardX + lane * L.laneW, L.judgeY - 190, L.laneW, 190);
+      }
     }
+    ctx.globalAlpha = 1;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(L.boardX, 0, L.boardW, L.judgeY + 10);
+    ctx.clip();
+
+    drawActiveHolds(ctx, L, t);
+    drawNotes(ctx, L, t);
+    ctx.restore();
+
+    drawKeys(ctx, L);
+    drawParticles(ctx);
+  }
+
+  function drawNotes(ctx, L, t) {
+    const notes = game.notes;
+    let start = 0;
+    let lo = 0;
+    let hi = notes.length;
+    const from = t - 360;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (notes[mid].time < from) lo = mid + 1;
+      else hi = mid;
+    }
+    start = lo;
+    for (let i = start; i < notes.length; i++) {
+      const note = notes[i];
+      if (note.time > t + game.travel) break;
+      if (note.judged) continue;
+      const headY = L.judgeY - ((note.time - t) / game.travel) * (L.judgeY + 34);
+      if (headY > L.judgeY + 24) continue;
+      if (note.end > 0) {
+        const tailY = L.judgeY - ((note.end - t) / game.travel) * (L.judgeY + 34);
+        drawHoldBody(ctx, L, note, tailY, headY, false);
+      }
+      drawNoteHead(ctx, L, note, headY);
+    }
+  }
+
+  function drawActiveHolds(ctx, L, t) {
+    for (let lane = 0; lane < 4; lane++) {
+      const note = game.activeHolds[lane];
+      if (!note || note.tailJudged) continue;
+      const headY = L.judgeY - ((note.time - t) / game.travel) * (L.judgeY + 34);
+      const tailY = L.judgeY - ((note.end - t) / game.travel) * (L.judgeY + 34);
+      drawHoldBody(ctx, L, note, tailY, Math.min(L.judgeY, headY + 4), !!note.holding);
+    }
+  }
+
+  function drawHoldBody(ctx, L, note, tailY, headY, active) {
+    const w = L.laneW * 0.4;
+    const x = L.boardX + note.lane * L.laneW + (L.laneW - w) / 2;
+    const top = Math.max(-20, Math.min(tailY, headY));
+    const bottom = Math.min(L.judgeY + 10, Math.max(tailY, headY));
+    if (bottom - top < 1) return;
+    ctx.fillStyle = LANE_COLORS[note.lane];
+    ctx.globalAlpha = active ? 0.42 : 0.22;
+    ctx.fillRect(x, top, w, bottom - top);
+    ctx.globalAlpha = active ? 0.9 : 0.55;
+    ctx.strokeStyle = LANE_COLORS[note.lane];
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, top, w - 1, bottom - top);
+    ctx.globalAlpha = 1;
+
+    const capY = Math.max(-20, Math.min(L.judgeY + 8, tailY));
+    ctx.fillStyle = LANE_COLORS[note.lane];
+    ctx.globalAlpha = 0.85;
+    roundRect(ctx, x - 2, capY - 4, w + 4, 8, 4);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawNoteHead(ctx, L, note, y) {
+    const sprite = note.end > 0 ? (skin && skin.ln[note.lane]) : (skin && skin.tap[note.lane]);
+    const size = L.laneW * 0.55;
+    const h = size * 0.97;
+    const alpha = clamp((y + 70) / 90, 0.15, 1);
+    ctx.globalAlpha = alpha;
+    if (sprite) {
+      ctx.drawImage(sprite, L.boardX + note.lane * L.laneW + (L.laneW - size) / 2, y - h / 2, size, h);
+    } else {
+      ctx.fillStyle = LANE_COLORS[note.lane];
+      ctx.beginPath();
+      ctx.arc(L.boardX + note.lane * L.laneW + L.laneW / 2, y, size * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawKeys(ctx, L) {
+    if (!skin) return;
+    const keyH = Math.min(L.laneW * 1.75, L.h - L.judgeY - 8);
+    const keyW = keyH * 0.4;
+    const y = L.h - keyH - 2;
+    for (let lane = 0; lane < 4; lane++) {
+      const x = L.boardX + lane * L.laneW + (L.laneW - keyW) / 2;
+      const img = game.keyDown[lane] ? skin.keyDown : skin.keyUp;
+      if (img) {
+        ctx.globalAlpha = 0.88;
+        ctx.drawImage(img, x, y, keyW, keyH);
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.strokeStyle = "rgba(255,255,255,0.22)";
+        ctx.lineWidth = 2;
+        roundRect(ctx, x, y, keyW, keyH, keyW / 2);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function drawParticles(ctx) {
+    if (!game.particles.length) return;
+    for (const p of game.particles) {
+      ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
 
   /* ---------------- 输入 ---------------- */
-  function pressLane(lane) {
-    hitLane(lane);
-    const pad = els.lanePads.querySelector('[data-lane="' + lane + '"]');
-    if (pad) {
-      pad.classList.add("pressed");
-      setTimeout(function () { pad.classList.remove("pressed"); }, 110);
-    }
-  }
-
   function keyToLane(key) {
     const map = {
       d: 0, f: 1, j: 2, k: 3,
@@ -928,7 +1217,7 @@
   }
 
   function onKeyDown(e) {
-    if (!active || e.repeat) return;
+    if (!active || !game || !game.running || e.repeat) return;
     const lane = keyToLane(e.key);
     if (lane < 0) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -937,77 +1226,131 @@
   }
 
   function onKeyUp(e) {
-    if (!active) return;
+    if (!active || !game) return;
     const lane = keyToLane(e.key);
     if (lane < 0) return;
-    const pad = els.lanePads.querySelector('[data-lane="' + lane + '"]');
-    if (pad) pad.classList.remove("pressed");
+    releaseLane(lane);
   }
 
   function bindOnce() {
     if (bound) return;
     bound = true;
 
-    els.startBtn.addEventListener("click", beginCountdown);
-    els.retry.addEventListener("click", beginCountdown);
+    els.packTabs.addEventListener("click", function (e) {
+      const btn = e.target.closest("[data-pack]");
+      if (btn) renderPack(btn.dataset.pack);
+    });
 
-    els.diffs.addEventListener("click", function (e) {
-      const btn = e.target.closest("[data-diff]");
+    els.speedOptions.addEventListener("click", function (e) {
+      const btn = e.target.closest("[data-speed]");
       if (!btn) return;
-      selectedDiff = btn.dataset.diff;
-      try { localStorage.setItem("rhythm-diff", selectedDiff); } catch (e) { /* ignore */ }
-      state = makeState(selectedDiff);
-      state.phase = "ready";
-      updateDiffButtons();
-      drawFrame(0, 0);
+      speed = parseFloat(btn.dataset.speed);
+      storeSpeed(speed);
+      setSpeedUI();
+    });
+
+    els.detailBack.addEventListener("click", function () {
+      if (audio) audio.pause();
+      showScreen("select");
+    });
+    els.detailStart.addEventListener("click", startGame);
+    els.playExit.addEventListener("click", function () {
+      stopGame();
+      showScreen("detail");
+    });
+    els.retry.addEventListener("click", startGame);
+    els.resultBack.addEventListener("click", function () {
+      stopGame();
+      showScreen("select");
     });
 
     els.lanePads.addEventListener("pointerdown", function (e) {
       const btn = e.target.closest("[data-lane]");
       if (!btn) return;
       e.preventDefault();
-      pressLane(parseInt(btn.dataset.lane, 10));
+      const lane = parseInt(btn.dataset.lane, 10);
+      if (btn.setPointerCapture) {
+        try { btn.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      }
+      pressLane(lane);
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach(function (evt) {
+      els.lanePads.addEventListener(evt, function (e) {
+        const btn = e.target.closest("[data-lane]");
+        if (!btn) return;
+        releaseLane(parseInt(btn.dataset.lane, 10));
+      });
     });
 
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
-    window.addEventListener("resize", function () {
-      if (!active) return;
-      resizeCanvas();
-      if (!state || !state.running) drawFrame(0, 0);
+    window.addEventListener("blur", function () {
+      if (!game) return;
+      for (let i = 0; i < 4; i++) releaseLane(i);
     });
+    window.addEventListener("resize", function () {
+      if (active && els && !els.play.hidden) {
+        resizeCanvas();
+      }
+    });
+  }
+
+  /* ---------------- 清理 ---------------- */
+  function stopGame() {
+    startToken++;
+    clearTimeout(countTimer);
+    countTimer = 0;
+    if (game) {
+      game.running = false;
+      game.finished = true;
+      cancelAnimationFrame(game.raf);
+      game.raf = 0;
+      game.activeHolds = [null, null, null, null];
+      game = null;
+    }
+    if (audio) {
+      audio.pause();
+      try { audio.currentTime = 0; } catch (e) { /* ignore */ }
+    }
+    if (els) {
+      els.count.hidden = true;
+      els.loading.hidden = true;
+      els.result.hidden = true;
+      els.judge.className = "judge-pop";
+      for (let i = 0; i < 4; i++) setPadPressed(i, false);
+    }
   }
 
   /* ---------------- 对外接口 ---------------- */
   window.RhythmGame = {
-    enter: function () {
-      if (!els) cacheEls();
-      active = true;
-      bindOnce();
-      selectedDiff = (function () {
-        try {
-          const saved = localStorage.getItem("rhythm-diff");
-          return saved && DIFFS[saved] ? saved : "easy";
-        } catch (e) { return "easy"; }
-      })();
-      showStartScreen();
-      requestAnimationFrame(function () {
-        resizeCanvas();
-        if (!state || !state.running) drawFrame(0, 0);
+    enter: enter,
+    exit: exit,
+    status: function () {
+      const base = {
+        loadStep: loadStep,
+        loadError: loadError,
+        chartsReady: !!window.RHYTHM_CHARTS,
+        skinReady: !!skin,
+        audioReadyState: audio ? audio.readyState : -1,
+        audioNetworkState: audio ? audio.networkState : -1,
+        audioSrc: audio ? audio.src.split("/").slice(-2).join("/") : "",
+        audioPaused: audio ? audio.paused : true,
+        audioTime: audio ? Math.round(audio.currentTime * 1000) : 0,
+        audioDuration: audio && isFinite(audio.duration) ? Math.round(audio.duration * 1000) : 0
+      };
+      if (!game) return base;
+      return Object.assign(base, {
+        song: game.song.id,
+        running: game.running,
+        finished: game.finished,
+        time: Math.round(game.time),
+        score: game.score,
+        combo: game.combo,
+        maxCombo: game.maxCombo,
+        acc: Math.round(game.accuracy * 100) / 100,
+        judged: game.judged,
+        notes: game.notes.length
       });
-    },
-    exit: function () {
-      active = false;
-      stopGame();
-      if (state) state.finished = true;
-      if (els) {
-        els.start.hidden = false;
-        els.result.hidden = true;
-        els.count.hidden = true;
-      }
-    },
-    setToast: function (fn) {
-      if (typeof fn === "function") toastFn = fn;
     }
   };
 })();
