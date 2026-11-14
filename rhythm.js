@@ -1,40 +1,27 @@
 /* =========================================================
-   4K 打歌 · 谱面来自 Malody Regular Dan v3（用户提供的 osz）
-   皮肤来自 OoKr4z's skin（用户提供的 osk）
+   4K 打歌 · osu!mania 皮肤 / 原生流速 / 可调 OD
    ========================================================= */
 (function () {
   "use strict";
 
   const PACKS = {
-    jack: {
-      label: "JACK",
-      title: "叠键特化",
-      desc: "密集的叠键与 Jack，考验手指的独立性。",
-      color: "#ff5c9d"
-    },
-    stream: {
-      label: "STREAM",
-      title: "连打特化",
-      desc: "连续的 Stream 与长条，跟着鼓点一路冲到底。",
-      color: "#4be3d0"
-    }
+    jack: { label: "JACK", cn: "叠键" },
+    stream: { label: "STREAM", cn: "切键" },
+    ln: { label: "LN", cn: "长条" }
   };
-
   const LANE_COLORS = ["#ff6b9d", "#c084fc", "#4be3d0", "#ffd166"];
   const KEYS = ["D", "F", "J", "K"];
-  const SPEEDS = [0.85, 1, 1.15, 1.3];
-  const WINDOW = { perfect: 45, great: 85, good: 125, bad: 165, miss: 190 };
-  const WEIGHT = { perfect: 1, great: 0.85, good: 0.6, bad: 0.3, miss: 0 };
-  const POINT = { perfect: 1000, great: 850, good: 600, bad: 300, miss: 0 };
+  const DEFAULTS = { speed: 30, volume: 80, od: 8, offset: 0, showAPFC: true };
+  const WEIGHT = { perfect: 1, great: 0.98, good: 2 / 3, bad: 1 / 3, miss: 0 };
+  const POINT = { perfect: 1000, great: 980, good: 667, bad: 333, miss: 0 };
   const GRADE_NAME = { perfect: "PERFECT", great: "GREAT", good: "GOOD", bad: "BAD", miss: "MISS" };
 
   let els = null;
   let bound = false;
   let active = false;
   let songs = [];
-  let selectedPack = "jack";
-  let selectedSong = null;
-  let speed = 1;
+  let selectedIndex = -1;
+  let settings = loadSettings();
   let audio = null;
   let audioSongId = "";
   let game = null;
@@ -50,85 +37,38 @@
   let loadStep = "idle";
   let loadError = "";
   let unlockToken = 0;
+  let settingsOpen = false;
 
   function $(id) { return document.getElementById(id); }
   function toast(message) {
     document.dispatchEvent(new CustomEvent("site:toast", { detail: { message: message } }));
   }
-
-  /* ---------------- DOM ---------------- */
-  function cache() {
-    els = {
-      select: $("rhythm-select"),
-      detail: $("rhythm-detail"),
-      play: $("rhythm-play"),
-      packTabs: $("pack-tabs"),
-      packStrip: $("pack-strip"),
-      packLabel: $("pack-label"),
-      packTitle: $("pack-title"),
-      packDesc: $("pack-desc"),
-      packCount: $("pack-count"),
-      grid: $("chart-grid"),
-      detailBg: $("detail-bg"),
-      detailBack: $("detail-back"),
-      detailCover: $("detail-cover"),
-      detailLevel: $("detail-level"),
-      detailPack: $("detail-pack"),
-      detailTitle: $("detail-title"),
-      detailArtist: $("detail-artist"),
-      detailBpm: $("detail-bpm"),
-      detailNotes: $("detail-notes"),
-      detailLn: $("detail-ln"),
-      detailMapper: $("detail-mapper"),
-      detailLength: $("detail-length"),
-      detailBest: $("detail-best"),
-      speedOptions: $("speed-options"),
-      detailStart: $("detail-start"),
-      playExit: $("play-exit"),
-      playTitle: $("play-title"),
-      playSub: $("play-sub"),
-      playTime: $("play-time"),
-      playFill: $("play-fill"),
-      playDuration: $("play-duration"),
-      stage: $("rhythm-stage"),
-      canvas: $("rhythm-canvas"),
-      score: $("rhythm-score"),
-      combo: $("rhythm-combo"),
-      acc: $("rhythm-acc"),
-      loading: $("rhythm-loading"),
-      loadingText: $("loading-text"),
-      count: $("rhythm-count"),
-      countText: $("rhythm-count-text"),
-      result: $("rhythm-result"),
-      grade: $("rhythm-grade"),
-      resultTitle: $("rhythm-result-title"),
-      resultScore: $("rhythm-result-score"),
-      resultAcc: $("rhythm-result-acc"),
-      resultCombo: $("rhythm-result-combo"),
-      resultDetail: $("rhythm-result-detail"),
-      retry: $("rhythm-retry"),
-      resultBack: $("rhythm-result-back"),
-      judge: $("judge-pop"),
-      lanePads: $("lane-pads")
-    };
-    els.ctx = els.canvas.getContext("2d");
-    els.ctx.imageSmoothingEnabled = true;
-  }
-
-  /* ---------------- 通用 ---------------- */
+  function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
   function formatTime(sec) {
     if (!isFinite(sec) || sec < 0) sec = 0;
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return m + ":" + String(s).padStart(2, "0");
+    return Math.floor(sec / 60) + ":" + String(Math.floor(sec % 60)).padStart(2, "0");
   }
-  function formatAcc(n) {
-    return (Math.round(n * 100) / 100).toFixed(2) + "%";
+  function formatAcc(n) { return (Math.round(n * 100) / 100).toFixed(2) + "%"; }
+  function padScore(n) { return String(Math.max(0, Math.round(n))).padStart(7, "0"); }
+
+  function loadSettings() {
+    const out = Object.assign({}, DEFAULTS);
+    try {
+      const raw = localStorage.getItem("rhythm-settings");
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (isFinite(saved.speed)) out.speed = clamp(saved.speed, 1, 40);
+        if (isFinite(saved.volume)) out.volume = clamp(saved.volume, 0, 100);
+        if (isFinite(saved.od)) out.od = clamp(saved.od, 0, 10);
+        if (isFinite(saved.offset)) out.offset = clamp(saved.offset, -100, 100);
+        out.showAPFC = saved.showAPFC !== false;
+      }
+    } catch (e) { /* ignore */ }
+    return out;
   }
-  function padScore(n) {
-    return String(Math.max(0, Math.round(n))).padStart(7, "0");
+  function saveSettings() {
+    try { localStorage.setItem("rhythm-settings", JSON.stringify(settings)); } catch (e) { /* ignore */ }
   }
-  function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
 
   function readBest(id) {
     try { return parseInt(localStorage.getItem("rhythm-best-" + id) || "0", 10) || 0; }
@@ -139,35 +79,116 @@
       if (score > readBest(id)) localStorage.setItem("rhythm-best-" + id, String(score));
     } catch (e) { /* ignore */ }
   }
-  function readSpeed() {
-    try {
-      const v = parseFloat(localStorage.getItem("rhythm-speed") || "1");
-      return SPEEDS.indexOf(v) >= 0 ? v : 1;
-    } catch (e) { return 1; }
-  }
-  function storeSpeed(v) {
-    try { localStorage.setItem("rhythm-speed", String(v)); } catch (e) { /* ignore */ }
+
+  function starsFor(song) {
+    const activeTime = Math.max(30, song.duration - 6);
+    const nps = song.notes / activeTime;
+    const lnRatio = song.ln / Math.max(1, song.notes);
+    return Math.round(clamp(1.2 + song.level * 0.55 + nps * 0.035 + lnRatio * 1.2, 1.5, 8.5) * 10) / 10;
   }
 
-  function levelColor(level) {
-    if (level >= 10) return "#ff5c9d";
-    if (level >= 8) return "#c084fc";
-    if (level >= 6) return "#63b3ff";
-    if (level >= 4) return "#4be3d0";
-    return "#8ef0a4";
+  // osu!mania stable 的原生流速：speed 1≈11485ms，speed 40≈287ms（402px 轨道）。
+  function travelFor(bpm, speed) {
+    const beatLength = 60000 / Math.max(60, bpm);
+    return clamp((402 * beatLength / 21) / Math.max(1, speed), 120, 12000);
+  }
+
+  // osu!mania OD 判定窗口（ms）
+  function windowsFor(od) {
+    const o = clamp(od, 0, 10);
+    return {
+      perfect: 16,
+      great: 64 - 3 * o,
+      good: 97 - 3 * o,
+      bad: 127 - 3 * o,
+      miss: 151 - 3 * o
+    };
+  }
+
+  /* ---------------- DOM ---------------- */
+  function cache() {
+    els = {
+      select: $("rhythm-select"),
+      play: $("rhythm-play"),
+      chartList: $("chart-list"),
+      chartCount: $("chart-count"),
+      previewBg: $("preview-bg"),
+      previewCover: $("preview-cover"),
+      previewLevel: $("preview-level"),
+      previewPack: $("preview-pack"),
+      previewTitle: $("preview-title"),
+      previewArtist: $("preview-artist"),
+      previewStars: $("preview-stars"),
+      previewBpm: $("preview-bpm"),
+      previewNotes: $("preview-notes"),
+      previewLn: $("preview-ln"),
+      previewLength: $("preview-length"),
+      previewMapper: $("preview-mapper"),
+      previewBest: $("preview-best"),
+      previewStart: $("preview-start"),
+      playExit: $("play-exit"),
+      playSettings: $("play-settings"),
+      playTitle: $("play-title"),
+      playSub: $("play-sub"),
+      playTime: $("play-time"),
+      playFill: $("play-fill"),
+      playDuration: $("play-duration"),
+      stage: $("rhythm-stage"),
+      canvas: $("rhythm-canvas"),
+      score: $("rhythm-score"),
+      combo: $("rhythm-combo"),
+      acc: $("rhythm-acc"),
+      badges: $("play-badges"),
+      badgeAp: $("badge-ap"),
+      badgeFc: $("badge-fc"),
+      loading: $("rhythm-loading"),
+      loadingText: $("loading-text"),
+      count: $("rhythm-count"),
+      countText: $("rhythm-count-text"),
+      settings: $("rhythm-settings"),
+      setSpeed: $("set-speed"),
+      setVolume: $("set-volume"),
+      setOd: $("set-od"),
+      setOffset: $("set-offset"),
+      setApfc: $("set-apfc"),
+      outSpeed: $("out-speed"),
+      outVolume: $("out-volume"),
+      outOd: $("out-od"),
+      outOffset: $("out-offset"),
+      outWindows: $("out-windows"),
+      settingsClose: $("settings-close"),
+      settingsExit: $("settings-exit"),
+      result: $("rhythm-result"),
+      grade: $("rhythm-grade"),
+      resultTitle: $("rhythm-result-title"),
+      resultScore: $("rhythm-result-score"),
+      resultAcc: $("rhythm-result-acc"),
+      resultCombo: $("rhythm-result-combo"),
+      resultDetail: $("rhythm-result-detail"),
+      resultBadge: $("rhythm-result-badge"),
+      retry: $("rhythm-retry"),
+      resultBack: $("rhythm-result-back"),
+      judge: $("judge-pop"),
+      lanePads: $("lane-pads")
+    };
+    els.ctx = els.canvas.getContext("2d");
+    els.ctx.imageSmoothingEnabled = true;
   }
 
   /* ---------------- 选曲 ---------------- */
   function enter() {
     if (!songs.length) songs = window.RHYTHM_SONGS || [];
+    songs.sort(function (a, b) {
+      return a.level - b.level || (a.pack === "jack" ? -1 : 1);
+    });
     active = true;
     if (!els) cache();
     bindOnce();
     stopGame();
-    selectedSong = null;
-    speed = readSpeed();
-    showScreen("select");
-    renderPack(selectedPack);
+    settings = loadSettings();
+    selectedIndex = -1;
+    showSelect();
+    renderList();
     setupSkin();
     requestAnimationFrame(resizeCanvas);
   }
@@ -178,112 +199,97 @@
     stopGame();
     if (els) {
       els.play.hidden = true;
-      els.detail.hidden = true;
       els.select.hidden = false;
     }
   }
 
-  function showScreen(name) {
+  function showSelect() {
     if (!els) return;
-    els.select.hidden = name !== "select";
-    els.detail.hidden = name !== "detail";
-    els.play.hidden = name !== "play";
+    els.select.hidden = false;
+    els.play.hidden = true;
+    els.settings.hidden = true;
+    settingsOpen = false;
     window.scrollTo(0, 0);
-    if (name === "play") requestAnimationFrame(resizeCanvas);
   }
 
-  function renderPack(pack) {
+  function showPlay() {
     if (!els) return;
-    selectedPack = pack;
-    const info = PACKS[pack];
-    els.packTabs.querySelectorAll("[data-pack]").forEach(function (btn) {
-      const on = btn.dataset.pack === pack;
-      btn.classList.toggle("active", on);
-      btn.setAttribute("aria-selected", on ? "true" : "false");
-    });
-    els.packLabel.textContent = info.label;
-    els.packLabel.style.color = info.color;
-    els.packTitle.textContent = info.title;
-    els.packDesc.textContent = info.desc;
-    els.packStrip.style.borderColor = info.color + "33";
-    els.packStrip.style.background =
-      "radial-gradient(circle at 85% 20%, " + info.color + "22, transparent 46%)," +
-      "linear-gradient(120deg, " + info.color + "14, rgba(12,15,27,.2))";
-    const list = songs.filter(function (s) { return s.pack === pack; })
-      .sort(function (a, b) { return a.level - b.level; });
-    els.packCount.textContent = String(list.length);
-    renderGrid(list);
+    els.select.hidden = true;
+    els.play.hidden = false;
+    requestAnimationFrame(resizeCanvas);
   }
 
-  function renderGrid(list) {
-    els.grid.innerHTML = "";
+  function renderList() {
+    if (!els) return;
+    els.chartCount.textContent = songs.length + " 张";
+    els.chartList.innerHTML = "";
     const frag = document.createDocumentFragment();
-    list.forEach(function (song) {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "chart-card";
-      card.style.setProperty("--lv-color", levelColor(song.level));
+    songs.forEach(function (song, index) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "chart-row";
+      row.dataset.index = String(index);
 
-      const img = document.createElement("img");
-      img.src = song.cover;
-      img.alt = song.title + " 封面";
-      img.loading = "lazy";
-      img.decoding = "async";
-
-      const badge = document.createElement("span");
-      badge.className = "chart-badge";
-      badge.textContent = song.version;
-
-      const info = document.createElement("span");
-      info.className = "chart-info";
-      const name = document.createElement("strong");
-      name.textContent = song.title;
-      const artist = document.createElement("span");
+      const main = document.createElement("span");
+      main.className = "chart-row-main";
+      const title = document.createElement("strong");
+      title.textContent = song.title;
+      const artist = document.createElement("small");
       artist.textContent = song.artist;
-      const stats = document.createElement("span");
-      stats.className = "chart-stats";
-      stats.innerHTML = "BPM <b>" + song.bpm + "</b> · <b>" + song.notes + "</b> notes";
-      info.appendChild(name);
-      info.appendChild(artist);
-      info.appendChild(stats);
+      main.appendChild(title);
+      main.appendChild(artist);
 
-      card.appendChild(img);
-      card.appendChild(badge);
-      card.appendChild(info);
-      card.addEventListener("click", function () { selectSong(song); });
-      frag.appendChild(card);
+      const meta = document.createElement("span");
+      meta.className = "chart-row-meta";
+      const level = document.createElement("b");
+      level.textContent = song.diffName || song.version;
+      const stars = document.createElement("em");
+      stars.textContent = "★ " + starsFor(song).toFixed(1);
+      meta.appendChild(level);
+      meta.appendChild(stars);
+
+      row.appendChild(main);
+      row.appendChild(meta);
+      row.addEventListener("click", function () { selectSong(index, true); });
+      frag.appendChild(row);
     });
-    els.grid.appendChild(frag);
+    els.chartList.appendChild(frag);
+    if (songs.length) selectSong(selectedIndex >= 0 ? selectedIndex : 0, false);
   }
 
-  function selectSong(song) {
-    if (!els) return;
-    selectedSong = song;
-    els.detailBg.src = song.cover;
-    els.detailCover.src = song.cover;
-    els.detailLevel.textContent = song.version;
-    els.detailPack.textContent = PACKS[song.pack].label + " / " + song.version;
-    els.detailTitle.textContent = song.title;
-    els.detailArtist.textContent = song.artist;
-    els.detailBpm.textContent = String(song.bpm);
-    els.detailNotes.textContent = String(song.notes);
-    els.detailLn.textContent = String(song.ln);
-    els.detailMapper.textContent = song.mapper || "—";
-    els.detailLength.textContent = formatTime(song.duration);
-    els.detailBest.textContent = "最高分：" + (readBest(song.id) ? readBest(song.id).toLocaleString("en-US") : "—");
-    setSpeedUI();
-    if (audio) {
-      audio.pause();
-      audio.currentTime = 0;
-    }
+  function selectSong(index, focusPreview) {
+    if (!songs[index]) return;
+    selectedIndex = index;
+    const song = songs[index];
+    els.previewBg.src = song.cover;
+    els.previewCover.src = song.cover;
+    els.previewLevel.textContent = song.diffName || song.version;
+    const diffName = song.diffName || song.version;
+    const packMeta = PACKS[song.pack].label +
+      (song.pack === "ln" ? "" : " · " + PACKS[song.pack].cn);
+    els.previewPack.textContent = packMeta + " / " + diffName;
+    els.previewTitle.textContent = song.title;
+    els.previewArtist.textContent = song.artist;
+    els.previewStars.textContent = "★ " + starsFor(song).toFixed(1);
+    els.previewBpm.textContent = String(song.bpm);
+    els.previewNotes.textContent = String(song.notes);
+    els.previewLn.textContent = String(song.ln);
+    els.previewLength.textContent = formatTime(song.duration);
+    els.previewMapper.textContent = song.mapper || "—";
+    const best = readBest(song.id);
+    els.previewBest.textContent = best ? best.toLocaleString("en-US") : "—";
+    els.chartList.querySelectorAll(".chart-row").forEach(function (row) {
+      row.classList.toggle("active", parseInt(row.dataset.index, 10) === index);
+    });
+    const activeRow = els.chartList.querySelector('.chart-row[data-index="' + index + '"]');
+    if (activeRow) activeRow.scrollIntoView({ block: "nearest" });
     preloadSong(song);
-    showScreen("detail");
-  }
-
-  function setSpeedUI() {
-    els.speedOptions.querySelectorAll("[data-speed]").forEach(function (btn) {
-      btn.classList.toggle("active", parseFloat(btn.dataset.speed) === speed);
-    });
+    if (focusPreview && window.innerWidth < 760) {
+      requestAnimationFrame(function () {
+        const panel = document.querySelector(".chart-preview");
+        if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
   }
 
   /* ---------------- 音频 ---------------- */
@@ -291,14 +297,12 @@
     if (audio) return audio;
     audio = new Audio();
     audio.preload = "auto";
-    audio.volume = 0.9;
+    audio.volume = settings.volume / 100;
     audio.addEventListener("ended", function () {
       if (active && game && game.running) finishGame();
     });
     audio.addEventListener("error", function () {
-      if (active && game && game.running) {
-        toast("音频加载失败，检查一下网络或换一张谱面");
-      }
+      if (active && game && game.running) toast("音频加载失败，检查网络或换一张谱面");
     });
     return audio;
   }
@@ -312,18 +316,12 @@
     }
   }
 
-  // iOS Safari 等浏览器要求播放必须紧挨用户点击；先在点击时静音试播一下。
   function unlockAudio() {
     const a = ensureAudio();
     const token = ++unlockToken;
     a.volume = 0;
     let promise;
-    try {
-      promise = a.play();
-    } catch (e) {
-      a.volume = 0.9;
-      return;
-    }
+    try { promise = a.play(); } catch (e) { a.volume = settings.volume / 100; return; }
     if (promise && promise.then) {
       promise.then(function () {
         if (token !== unlockToken) return;
@@ -331,12 +329,10 @@
           a.pause();
           try { a.currentTime = 0; } catch (e) { /* ignore */ }
         }
-        a.volume = 0.9;
-      }).catch(function () {
-        a.volume = 0.9;
-      });
+        a.volume = settings.volume / 100;
+      }).catch(function () { a.volume = settings.volume / 100; });
     } else {
-      a.volume = 0.9;
+      a.volume = settings.volume / 100;
     }
   }
 
@@ -387,66 +383,29 @@
       loadImage("skin-note.png"),
       loadImage("skin-ln.png"),
       loadImage("skin-key-up.png"),
-      loadImage("skin-key-down.png")
+      loadImage("skin-key-down.png"),
+      loadImage("skin-hint.png"),
+      loadImage("skin-mascot.webp"),
+      loadImage("skin-holdbody.png")
     ]).then(function (imgs) {
       skin = {
-        tap: [],
-        ln: [],
+        note: imgs[0],
+        ln: imgs[1],
         keyUp: imgs[2],
-        keyDown: imgs[3]
+        keyDown: imgs[3],
+        hint: imgs[4],
+        mascot: imgs[5],
+        holdbody: imgs[6]
       };
-      for (let lane = 0; lane < 4; lane++) {
-        skin.tap[lane] = makeNoteSprite(imgs[0], LANE_COLORS[lane], false);
-        skin.ln[lane] = makeNoteSprite(imgs[1], LANE_COLORS[lane], true);
-      }
       return skin;
     }).catch(function () {
-      skin = { tap: [null, null, null, null], ln: [null, null, null, null], keyUp: null, keyDown: null };
+      skin = { note: null, ln: null, keyUp: null, keyDown: null, hint: null, mascot: null, holdbody: null };
       return skin;
     });
     return skinPromise;
   }
 
-  function makeNoteSprite(img, color, isLn) {
-    const size = 190;
-    const c = document.createElement("canvas");
-    c.width = size;
-    c.height = size;
-    const x = c.getContext("2d");
-    if (!img) {
-      x.fillStyle = color;
-      x.beginPath();
-      x.arc(size / 2, size / 2, size * 0.34, 0, Math.PI * 2);
-      x.fill();
-      return c;
-    }
-    const w = 150;
-    const h = 146;
-    const dx = (size - w) / 2;
-    const dy = (size - h) / 2;
-    x.save();
-    x.shadowColor = color;
-    x.shadowBlur = 16;
-    x.globalAlpha = 0.9;
-    x.drawImage(img, dx, dy, w, h);
-    x.restore();
-    x.save();
-    x.globalCompositeOperation = "source-atop";
-    x.globalAlpha = isLn ? 0.42 : 0.24;
-    x.fillStyle = color;
-    x.fillRect(0, 0, size, size);
-    x.restore();
-    x.strokeStyle = color;
-    x.globalAlpha = isLn ? 0.9 : 0.55;
-    x.lineWidth = isLn ? 3 : 2;
-    x.beginPath();
-    x.arc(size / 2, size / 2, 72, 0, Math.PI * 2);
-    x.stroke();
-    x.globalAlpha = 1;
-    return c;
-  }
-
-  /* ---------------- 谱面加载 ---------------- */
+  /* ---------------- 谱面数据 ---------------- */
   function loadCharts() {
     if (window.RHYTHM_CHARTS) return Promise.resolve(window.RHYTHM_CHARTS);
     if (chartPromise) return chartPromise;
@@ -455,41 +414,39 @@
       script.src = "charts-data.js";
       script.onload = function () {
         if (window.RHYTHM_CHARTS) resolve(window.RHYTHM_CHARTS);
-        else {
-          chartPromise = null;
-          reject(new Error("chart data missing"));
-        }
+        else { chartPromise = null; reject(new Error("chart data missing")); }
       };
-      script.onerror = function () {
-        chartPromise = null;
-        reject(new Error("chart data failed"));
-      };
+      script.onerror = function () { chartPromise = null; reject(new Error("chart data failed")); };
       document.head.appendChild(script);
     });
     return chartPromise;
   }
 
-  /* ---------------- 开始 ---------------- */
+  /* ---------------- 开始游戏 ---------------- */
   async function startGame() {
-    if (!active || !selectedSong) return;
-    const song = selectedSong;
+    if (!active || !songs[selectedIndex]) return;
+    const song = songs[selectedIndex];
     const token = ++startToken;
     unlockAudio();
-    showScreen("play");
+    showPlay();
     els.loading.hidden = false;
     els.count.hidden = true;
     els.result.hidden = true;
+    els.settings.hidden = true;
     els.judge.className = "judge-pop";
+    els.badges.hidden = true;
     els.loadingText.textContent = "正在加载谱面与音频…";
-    loadStep = "charts";
-    loadError = "";
     els.playTitle.textContent = song.title;
-    els.playSub.textContent = PACKS[song.pack].label + " · " + song.version + " · " + song.artist;
+    els.playSub.textContent = PACKS[song.pack].label + " · " +
+      (song.diffName || song.version) + " · " + song.artist;
     els.playDuration.textContent = formatTime(song.duration);
     els.playTime.textContent = "0:00";
     els.playFill.style.width = "0%";
-    els.detailStart.disabled = true;
+    els.playSettings.disabled = false;
+    loadStep = "charts";
+    loadError = "";
     game = null;
+    settingsOpen = false;
 
     try {
       const charts = await loadCharts();
@@ -511,6 +468,7 @@
       els.loadingText.textContent = "准备中…";
       resizeCanvas();
       updateHud();
+      updateBadges();
       runCountdown(token);
     } catch (err) {
       loadStep = "error";
@@ -518,9 +476,7 @@
       if (token !== startToken) return;
       els.loading.hidden = true;
       toast("谱面或音频加载失败，再试一次吧");
-      showScreen("detail");
-    } finally {
-      if (els) els.detailStart.disabled = false;
+      showSelect();
     }
   }
 
@@ -543,7 +499,6 @@
     notes.forEach(function (n, i) { laneNotes[n.lane].push(i); });
     const lnCount = notes.filter(function (n) { return n.end > 0; }).length;
     const last = notes.length ? Math.max.apply(null, notes.map(function (n) { return n.end || n.time; })) : 0;
-    const travel = clamp((60000 / Math.max(60, song.bpm)) * 4 / speed, 580, 2600);
 
     const g = {
       song: song,
@@ -565,15 +520,19 @@
       judged: 0,
       weighted: 0,
       accuracy: 100,
+      ap: true,
+      fc: true,
       running: false,
       finished: false,
+      wasRunning: false,
       time: 0,
+      travel: travelFor(song.bpm, settings.speed),
+      windows: windowsFor(settings.od),
+      offset: settings.offset,
       lastDraw: 0,
       lastUi: 0,
       lastFrame: 0,
       raf: 0,
-      travel: travel,
-      lnCount: lnCount,
       endAt: last + 2200,
       missCursor: 0,
       coverImage: null
@@ -581,6 +540,7 @@
     g.coverImage = new Image();
     g.coverImage.onload = function () { if (game === g) renderStatic(); };
     g.coverImage.src = song.cover;
+    applyAudioSettings();
     return g;
   }
 
@@ -609,14 +569,14 @@
     els.count.hidden = true;
     unlockToken++;
     try {
-      audio.volume = 0.9;
+      audio.volume = settings.volume / 100;
       audio.currentTime = 0;
       await audio.play();
     } catch (err) {
       if (token !== startToken) return;
       toast("浏览器没允许播放音频，请再点一次开始");
       stopGame();
-      showScreen("detail");
+      showSelect();
       return;
     }
     if (token !== startToken || !active || !game) {
@@ -627,17 +587,102 @@
     game.lastFrame = performance.now();
     game.lastDraw = 0;
     game.lastUi = 0;
+    els.badges.hidden = !settings.showAPFC;
+    updateBadges();
     game.raf = requestAnimationFrame(loop);
   }
 
+  /* ---------------- 设置 ---------------- */
+  function applyAudioSettings() {
+    if (audio) audio.volume = settings.volume / 100;
+  }
+
+  function updateSettingsUI() {
+    if (!els) return;
+    els.setSpeed.value = String(settings.speed);
+    els.setVolume.value = String(settings.volume);
+    els.setOd.value = String(settings.od);
+    els.setOffset.value = String(settings.offset);
+    els.setApfc.checked = !!settings.showAPFC;
+    els.outSpeed.textContent = String(settings.speed);
+    els.outVolume.textContent = settings.volume + "%";
+    els.outOd.textContent = Number(settings.od).toFixed(1);
+    els.outOffset.textContent = (settings.offset > 0 ? "+" : "") + settings.offset + " ms";
+    const w = windowsFor(settings.od);
+    if (els.outWindows) {
+      els.outWindows.textContent = "判定窗口 ±" + Math.round(w.perfect) + " / ±" +
+        Math.round(w.great) + " / ±" + Math.round(w.good) + " / ±" + Math.round(w.bad) + " ms";
+    }
+  }
+
+  function applySettings() {
+    if (game) {
+      game.travel = travelFor(game.song.bpm, settings.speed);
+      game.windows = windowsFor(settings.od);
+      game.offset = settings.offset;
+    }
+    applyAudioSettings();
+    updateBadges();
+    updateSettingsUI();
+    saveSettings();
+  }
+
+  function updateBadges() {
+    if (!els) return;
+    const show = !!game && settings.showAPFC && !game.finished;
+    els.badges.hidden = !show;
+    if (!show) return;
+    els.badgeAp.classList.toggle("lost", !game.ap);
+    els.badgeFc.classList.toggle("lost", !game.fc);
+  }
+
+  function openSettings() {
+    if (!game || !game.running) {
+      toast("开始打歌后才能调整设置");
+      return;
+    }
+    settingsOpen = true;
+    game.wasRunning = true;
+    game.running = false;
+    cancelAnimationFrame(game.raf);
+    game.raf = 0;
+    if (audio) audio.pause();
+    updateSettingsUI();
+    els.settings.hidden = false;
+    els.badges.hidden = true;
+  }
+
+  function closeSettings() {
+    if (!els) return;
+    els.settings.hidden = true;
+    settingsOpen = false;
+    if (game && game.wasRunning && !game.finished) {
+      game.wasRunning = false;
+      audio.volume = settings.volume / 100;
+      const p = audio.play();
+      if (p && p.catch) p.catch(function () { toast("继续播放失败，请重试"); });
+      game.running = true;
+      game.lastFrame = performance.now();
+      game.lastDraw = 0;
+      game.lastUi = 0;
+      els.badges.hidden = !settings.showAPFC;
+      updateBadges();
+      game.raf = requestAnimationFrame(loop);
+    }
+  }
+
   /* ---------------- 判定 ---------------- */
+  function gameTime() {
+    if (!audio || !game) return 0;
+    return Math.max(0, audio.currentTime * 1000 + game.offset);
+  }
+
   function updateHud() {
-    if (!els || !game) {
-      if (els) {
-        els.score.textContent = "0000000";
-        els.combo.textContent = "0";
-        els.acc.textContent = "100.00%";
-      }
+    if (!els) return;
+    if (!game) {
+      els.score.textContent = "0000000";
+      els.combo.textContent = "0";
+      els.acc.textContent = "100.00%";
       return;
     }
     els.score.textContent = padScore(game.score);
@@ -653,6 +698,27 @@
     els.judge.classList.add("show");
   }
 
+  function spawnBurst(lane, count) {
+    if (!game || !dims.w) return;
+    const L = getLayout();
+    const x = L.boardX + lane * L.laneW + L.laneW / 2;
+    const y = L.judgeY;
+    for (let i = 0; i < count; i++) {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 2.2;
+      const speed = 80 + Math.random() * 170;
+      game.particles.push({
+        x: x + (Math.random() - 0.5) * L.laneW * 0.32,
+        y: y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0.28 + Math.random() * 0.25,
+        maxLife: 0.53,
+        color: LANE_COLORS[lane]
+      });
+    }
+    if (game.particles.length > 100) game.particles.splice(0, game.particles.length - 100);
+  }
+
   function registerHit(kind, isTail, lane) {
     if (!game) return;
     game.judged++;
@@ -661,10 +727,12 @@
     game.score += POINT[kind];
     game.combo++;
     game.maxCombo = Math.max(game.maxCombo, game.combo);
+    if (kind !== "perfect") game.ap = false;
     game.accuracy = game.judged ? (game.weighted / game.judged) * 100 : 100;
     flashJudge(kind);
-    spawnBurst(lane, isTail ? 7 : (kind === "perfect" ? 10 : 6));
+    spawnBurst(lane, isTail ? 6 : (kind === "perfect" ? 9 : 6));
     updateHud();
+    updateBadges();
   }
 
   function registerMiss() {
@@ -672,6 +740,8 @@
     game.judged++;
     game.miss++;
     game.combo = 0;
+    game.ap = false;
+    game.fc = false;
     game.accuracy = game.judged ? (game.weighted / game.judged) * 100 : 100;
     const now = performance.now();
     if (now - lastMissFlash > 90) {
@@ -679,25 +749,16 @@
       flashJudge("miss");
     }
     updateHud();
+    updateBadges();
   }
 
   function gradeFor(delta) {
-    if (delta <= WINDOW.perfect) return "perfect";
-    if (delta <= WINDOW.great) return "great";
-    if (delta <= WINDOW.good) return "good";
-    if (delta <= WINDOW.bad) return "bad";
+    const w = game.windows;
+    if (delta <= w.perfect) return "perfect";
+    if (delta <= w.great) return "great";
+    if (delta <= w.good) return "good";
+    if (delta <= w.bad) return "bad";
     return null;
-  }
-
-  function lowerBound(arr, t) {
-    let lo = 0;
-    let hi = arr.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (arr[mid].time < t) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
   }
 
   function laneLowerBound(lane, t) {
@@ -713,13 +774,13 @@
   }
 
   function pressLane(lane) {
-    if (!active || !game || !game.running || game.finished) return;
+    if (!active || !game || !game.running || game.finished || settingsOpen) return;
     if (game.keyDown[lane]) return;
     game.keyDown[lane] = true;
     game.laneGlow[lane] = performance.now();
     setPadPressed(lane, true);
 
-    const t = game.time;
+    const t = gameTime();
     const activeHold = game.activeHolds[lane];
     if (activeHold && t <= activeHold.end) activeHold.holding = true;
 
@@ -727,7 +788,7 @@
     const start = laneLowerBound(lane, t);
     let best = null;
     let bestDelta = Infinity;
-    for (let i = Math.max(0, start - 6); i < Math.min(arr.length, start + 8); i++) {
+    for (let i = Math.max(0, start - 7); i < Math.min(arr.length, start + 9); i++) {
       const note = game.notes[arr[i]];
       if (note.judged) continue;
       const d = Math.abs(note.time - t);
@@ -736,7 +797,7 @@
         best = note;
       }
     }
-    if (!best || bestDelta > WINDOW.bad) return;
+    if (!best || bestDelta > game.windows.bad) return;
 
     const kind = gradeFor(bestDelta);
     if (!kind) return;
@@ -767,10 +828,9 @@
   function updateGame(t, dt) {
     if (!game || !game.running) return;
 
-    // 错过的单点 / 长条头部
     while (game.missCursor < game.notes.length) {
       const note = game.notes[game.missCursor];
-      if (note.time >= t - WINDOW.miss) break;
+      if (note.time >= t - game.windows.miss) break;
       if (!note.judged) {
         note.judged = true;
         if (note.end > 0) {
@@ -782,7 +842,6 @@
       game.missCursor++;
     }
 
-    // 长条尾巴：到点还按着（或刚松开 90ms 内）才算完成
     for (let lane = 0; lane < 4; lane++) {
       const hold = game.activeHolds[lane];
       if (!hold || hold.tailJudged) continue;
@@ -807,30 +866,6 @@
     if (t > game.endAt) finishGame();
   }
 
-  function spawnBurst(lane, count) {
-    if (!game || !dims.w) return;
-    const layout = getLayout();
-    const chosen = lane;
-    const x = layout.boardX + chosen * layout.laneW + layout.laneW / 2;
-    const y = layout.judgeY;
-    for (let i = 0; i < count; i++) {
-      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 2.2;
-      const speed = 80 + Math.random() * 170;
-      game.particles.push({
-        x: x + (Math.random() - 0.5) * layout.laneW * 0.32,
-        y: y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        life: 0.3 + Math.random() * 0.28,
-        maxLife: 0.58,
-        color: LANE_COLORS[chosen]
-      });
-    }
-    if (game.particles.length > 110) {
-      game.particles.splice(0, game.particles.length - 110);
-    }
-  }
-
   function finishGame() {
     if (!game || game.finished) return;
     game.finished = true;
@@ -838,6 +873,8 @@
     cancelAnimationFrame(game.raf);
     game.raf = 0;
     if (audio) audio.pause();
+    els.settings.hidden = true;
+    els.playSettings.disabled = true;
 
     for (const note of game.notes) {
       if (!note.judged) {
@@ -859,10 +896,13 @@
       }
       game.activeHolds[lane] = null;
     }
+    if (game.miss > 0) game.fc = false;
+    game.ap = game.perfect === game.judged;
     game.combo = 0;
     game.accuracy = game.judged ? (game.weighted / game.judged) * 100 : 100;
     updateHud();
     els.playFill.style.width = "100%";
+    els.badges.hidden = true;
 
     let grade = "D";
     if (game.accuracy >= 98) grade = "S";
@@ -880,19 +920,21 @@
     els.resultDetail.textContent =
       "Perfect " + game.perfect + " · Great " + game.great +
       " · Good " + game.good + " · Bad " + game.bad + " · Miss " + game.miss;
+    els.resultBadge.textContent = game.ap ? "AP" : (game.fc ? "FC" : "");
+    els.resultBadge.className = "result-badge " + (game.ap ? "ap" : (game.fc ? "fc" : ""));
     els.result.hidden = false;
     els.loading.hidden = true;
     els.count.hidden = true;
     els.judge.className = "judge-pop";
     saveBest(game.song.id, game.score);
     const best = readBest(game.song.id);
-    els.detailBest.textContent = "最高分：" + (best ? best.toLocaleString("en-US") : "—");
+    els.previewBest.textContent = best ? best.toLocaleString("en-US") : "—";
   }
 
   /* ---------------- 主循环 ---------------- */
   function loop(ts) {
     if (!game || !game.running) return;
-    const t = Math.max(0, audio.currentTime * 1000);
+    const t = gameTime();
     const dt = clamp((t - game.time) / 1000, 0, 0.05);
     game.time = t;
     updateGame(t, dt);
@@ -919,7 +961,7 @@
   function getLayout() {
     const w = dims.w;
     const h = dims.h;
-    const boardW = Math.min(w - (w < 640 ? 24 : 72), 680);
+    const boardW = Math.min(w - (w < 640 ? 20 : 130), 680);
     const boardX = (w - boardW) / 2;
     const laneW = boardW / 4;
     const judgeY = h * 0.78;
@@ -951,15 +993,9 @@
     const br = w / h;
     let dw, dh, dx, dy;
     if (ir > br) {
-      dh = h;
-      dw = h * ir;
-      dx = x + (w - dw) / 2;
-      dy = y;
+      dh = h; dw = h * ir; dx = x + (w - dw) / 2; dy = y;
     } else {
-      dw = w;
-      dh = w / ir;
-      dx = x;
-      dy = y + (h - dh) / 2;
+      dw = w; dh = w / ir; dx = x; dy = y + (h - dh) / 2;
     }
     ctx.drawImage(img, dx, dy, dw, dh);
   }
@@ -984,39 +1020,44 @@
     const ctx = sctx;
     ctx.clearRect(0, 0, L.w, L.h);
 
-    // 封面做很淡的背景
     if (game && game.coverImage && game.coverImage.complete && game.coverImage.naturalWidth) {
       ctx.save();
-      ctx.globalAlpha = 0.2;
+      ctx.globalAlpha = 0.14;
       drawCoverFit(ctx, game.coverImage, 0, 0, L.w, L.h);
       ctx.restore();
     }
     const bg = ctx.createLinearGradient(0, 0, 0, L.h);
-    bg.addColorStop(0, "rgba(6,8,16,0.82)");
-    bg.addColorStop(0.55, "rgba(7,9,18,0.65)");
-    bg.addColorStop(1, "rgba(9,11,22,0.95)");
+    bg.addColorStop(0, "rgba(6,8,16,0.9)");
+    bg.addColorStop(0.6, "rgba(7,9,18,0.76)");
+    bg.addColorStop(1, "rgba(9,11,22,0.97)");
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, L.w, L.h);
 
+    // 皮肤舞台角色（放在轨道后面，只露出一部分）
+    if (skin && skin.mascot && L.w > 980) {
+      const mh = Math.min(330, L.h * 0.55);
+      const mw = mh * (skin.mascot.width / skin.mascot.height);
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      ctx.drawImage(skin.mascot, 14, L.h - mh + 10, mw, mh);
+      ctx.restore();
+    }
+
     ctx.save();
-    roundRect(ctx, L.boardX, 0, L.boardW, L.h, 14);
+    roundRect(ctx, L.boardX, 0, L.boardW, L.h, 12);
     ctx.clip();
 
-    const boardBg = ctx.createLinearGradient(0, 0, 0, L.h);
-    boardBg.addColorStop(0, "rgba(4,6,13,0.36)");
-    boardBg.addColorStop(0.72, "rgba(5,7,15,0.78)");
-    boardBg.addColorStop(1, "rgba(9,12,24,0.94)");
-    ctx.fillStyle = boardBg;
+    // 皮肤 4K 列背景是黑色半透明
+    ctx.fillStyle = "rgba(0,0,0,0.57)";
     ctx.fillRect(L.boardX, 0, L.boardW, L.h);
-
     for (let i = 0; i < 4; i++) {
       const x = L.boardX + i * L.laneW;
-      ctx.fillStyle = i % 2 === 0 ? "rgba(255,255,255,0.014)" : "rgba(0,0,0,0.08)";
+      ctx.fillStyle = i % 2 === 0 ? "rgba(255,255,255,0.018)" : "rgba(0,0,0,0.16)";
       ctx.fillRect(x, 0, L.laneW, L.h);
     }
     for (let i = 1; i < 4; i++) {
       const x = L.boardX + i * L.laneW;
-      ctx.strokeStyle = "rgba(255,255,255,0.055)";
+      ctx.strokeStyle = "rgba(255,255,255,0.045)";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -1024,45 +1065,42 @@
       ctx.stroke();
     }
 
-    // 顶部和底部渐隐
     const topFade = ctx.createLinearGradient(0, 0, 0, 110);
-    topFade.addColorStop(0, "rgba(5,7,15,0.92)");
+    topFade.addColorStop(0, "rgba(5,7,15,0.94)");
     topFade.addColorStop(1, "rgba(5,7,15,0)");
     ctx.fillStyle = topFade;
     ctx.fillRect(L.boardX, 0, L.boardW, 110);
     const bottomFade = ctx.createLinearGradient(0, L.judgeY + 50, 0, L.h);
     bottomFade.addColorStop(0, "rgba(5,7,15,0)");
-    bottomFade.addColorStop(1, "rgba(5,7,15,0.9)");
+    bottomFade.addColorStop(1, "rgba(5,7,15,0.92)");
     ctx.fillStyle = bottomFade;
     ctx.fillRect(L.boardX, L.judgeY + 50, L.boardW, L.h - L.judgeY - 50);
 
-    // 判定线
-    const line = ctx.createLinearGradient(L.boardX, 0, L.boardX + L.boardW, 0);
-    line.addColorStop(0, "rgba(255,255,255,0)");
-    line.addColorStop(0.12, "rgba(255,255,255,0.7)");
-    line.addColorStop(0.5, "#ffffff");
-    line.addColorStop(0.88, "rgba(255,255,255,0.7)");
-    line.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.strokeStyle = line;
-    ctx.lineWidth = 1.6;
+    // 皮肤里的 mania-stage-hint 本身是透明线（JudgementLine:0）；
+    // 保留一层白色判定线，保证这个皮肤下也能清楚看到落点。
+    if (skin && skin.hint) {
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(skin.hint, L.boardX, L.judgeY - 1, L.boardW, 2);
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.82)";
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.moveTo(L.boardX, L.judgeY);
-    ctx.lineTo(L.boardX + L.boardW, L.judgeY);
+    ctx.moveTo(L.boardX, L.judgeY + 0.5);
+    ctx.lineTo(L.boardX + L.boardW, L.judgeY + 0.5);
     ctx.stroke();
+    ctx.restore();
 
     for (let i = 0; i < 4; i++) {
       const x = L.boardX + i * L.laneW + L.laneW / 2;
-      ctx.fillStyle = "rgba(255,255,255,0.22)";
+      ctx.fillStyle = "rgba(255,255,255,0.2)";
       ctx.font = "600 10px Consolas, monospace";
       ctx.textAlign = "center";
       ctx.fillText(KEYS[i], x, L.h - 8);
     }
     ctx.restore();
-
-    // 两侧细边
-    ctx.strokeStyle = "rgba(255,255,255,0.055)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(L.boardX + 0.5, 0.5, L.boardW - 1, L.h - 1);
   }
 
   function drawFrame(t) {
@@ -1072,14 +1110,13 @@
     ctx.clearRect(0, 0, L.w, L.h);
     if (staticCanvas) ctx.drawImage(staticCanvas, 0, 0, L.w, L.h);
 
-    // 按键轨道光
     const now = performance.now();
     for (let lane = 0; lane < 4; lane++) {
       const elapsed = now - game.laneGlow[lane];
       if (elapsed >= 0 && elapsed < 160) {
         ctx.globalAlpha = (1 - elapsed / 160) * 0.1;
         ctx.fillStyle = LANE_COLORS[lane];
-        ctx.fillRect(L.boardX + lane * L.laneW, L.judgeY - 190, L.laneW, 190);
+        ctx.fillRect(L.boardX + lane * L.laneW, L.judgeY - 200, L.laneW, 200);
       }
     }
     ctx.globalAlpha = 1;
@@ -1088,7 +1125,6 @@
     ctx.beginPath();
     ctx.rect(L.boardX, 0, L.boardW, L.judgeY + 10);
     ctx.clip();
-
     drawActiveHolds(ctx, L, t);
     drawNotes(ctx, L, t);
     ctx.restore();
@@ -1099,7 +1135,6 @@
 
   function drawNotes(ctx, L, t) {
     const notes = game.notes;
-    let start = 0;
     let lo = 0;
     let hi = notes.length;
     const from = t - 360;
@@ -1108,8 +1143,7 @@
       if (notes[mid].time < from) lo = mid + 1;
       else hi = mid;
     }
-    start = lo;
-    for (let i = start; i < notes.length; i++) {
+    for (let i = lo; i < notes.length; i++) {
       const note = notes[i];
       if (note.time > t + game.travel) break;
       if (note.judged) continue;
@@ -1134,20 +1168,25 @@
   }
 
   function drawHoldBody(ctx, L, note, tailY, headY, active) {
-    const w = L.laneW * 0.4;
+    const w = L.laneW * 0.36;
     const x = L.boardX + note.lane * L.laneW + (L.laneW - w) / 2;
     const top = Math.max(-20, Math.min(tailY, headY));
     const bottom = Math.min(L.judgeY + 10, Math.max(tailY, headY));
     if (bottom - top < 1) return;
+    if (skin && skin.holdbody) {
+      ctx.save();
+      ctx.globalAlpha = active ? 0.72 : 0.48;
+      ctx.drawImage(skin.holdbody, 0, 0, skin.holdbody.width, skin.holdbody.height, x, top, w, bottom - top);
+      ctx.restore();
+    }
     ctx.fillStyle = LANE_COLORS[note.lane];
-    ctx.globalAlpha = active ? 0.42 : 0.22;
+    ctx.globalAlpha = active ? 0.3 : 0.16;
     ctx.fillRect(x, top, w, bottom - top);
     ctx.globalAlpha = active ? 0.9 : 0.55;
     ctx.strokeStyle = LANE_COLORS[note.lane];
     ctx.lineWidth = 1;
     ctx.strokeRect(x + 0.5, top, w - 1, bottom - top);
     ctx.globalAlpha = 1;
-
     const capY = Math.max(-20, Math.min(L.judgeY + 8, tailY));
     ctx.fillStyle = LANE_COLORS[note.lane];
     ctx.globalAlpha = 0.85;
@@ -1157,17 +1196,17 @@
   }
 
   function drawNoteHead(ctx, L, note, y) {
-    const sprite = note.end > 0 ? (skin && skin.ln[note.lane]) : (skin && skin.tap[note.lane]);
-    const size = L.laneW * 0.55;
+    const img = note.end > 0 ? (skin && skin.ln) : (skin && skin.note);
+    const size = L.laneW * 0.58;
     const h = size * 0.97;
     const alpha = clamp((y + 70) / 90, 0.15, 1);
     ctx.globalAlpha = alpha;
-    if (sprite) {
-      ctx.drawImage(sprite, L.boardX + note.lane * L.laneW + (L.laneW - size) / 2, y - h / 2, size, h);
+    if (img) {
+      ctx.drawImage(img, L.boardX + note.lane * L.laneW + (L.laneW - size) / 2, y - h / 2, size, h);
     } else {
-      ctx.fillStyle = LANE_COLORS[note.lane];
+      ctx.fillStyle = "#f6e7b8";
       ctx.beginPath();
-      ctx.arc(L.boardX + note.lane * L.laneW + L.laneW / 2, y, size * 0.35, 0, Math.PI * 2);
+      ctx.arc(L.boardX + note.lane * L.laneW + L.laneW / 2, y, size * 0.36, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
@@ -1182,7 +1221,7 @@
       const x = L.boardX + lane * L.laneW + (L.laneW - keyW) / 2;
       const img = game.keyDown[lane] ? skin.keyDown : skin.keyUp;
       if (img) {
-        ctx.globalAlpha = 0.88;
+        ctx.globalAlpha = 0.9;
         ctx.drawImage(img, x, y, keyW, keyH);
         ctx.globalAlpha = 1;
       } else {
@@ -1206,7 +1245,7 @@
     ctx.globalAlpha = 1;
   }
 
-  /* ---------------- 输入 ---------------- */
+  /* ---------------- 输入 / 绑定 ---------------- */
   function keyToLane(key) {
     const map = {
       d: 0, f: 1, j: 2, k: 3,
@@ -1217,7 +1256,7 @@
   }
 
   function onKeyDown(e) {
-    if (!active || !game || !game.running || e.repeat) return;
+    if (!active || !game || !game.running || e.repeat || settingsOpen) return;
     const lane = keyToLane(e.key);
     if (lane < 0) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1236,32 +1275,37 @@
     if (bound) return;
     bound = true;
 
-    els.packTabs.addEventListener("click", function (e) {
-      const btn = e.target.closest("[data-pack]");
-      if (btn) renderPack(btn.dataset.pack);
-    });
-
-    els.speedOptions.addEventListener("click", function (e) {
-      const btn = e.target.closest("[data-speed]");
-      if (!btn) return;
-      speed = parseFloat(btn.dataset.speed);
-      storeSpeed(speed);
-      setSpeedUI();
-    });
-
-    els.detailBack.addEventListener("click", function () {
-      if (audio) audio.pause();
-      showScreen("select");
-    });
-    els.detailStart.addEventListener("click", startGame);
+    els.previewStart.addEventListener("click", startGame);
     els.playExit.addEventListener("click", function () {
       stopGame();
-      showScreen("detail");
+      showSelect();
     });
     els.retry.addEventListener("click", startGame);
     els.resultBack.addEventListener("click", function () {
       stopGame();
-      showScreen("select");
+      showSelect();
+    });
+    els.playSettings.addEventListener("click", openSettings);
+    els.settingsClose.addEventListener("click", closeSettings);
+    els.settingsExit.addEventListener("click", function () {
+      stopGame();
+      showSelect();
+    });
+
+    ["speed", "volume", "od", "offset"].forEach(function (key) {
+      const input = els["set" + key.charAt(0).toUpperCase() + key.slice(1)];
+      if (!input) return;
+      input.addEventListener("input", function () {
+        if (key === "speed") settings.speed = clamp(parseFloat(input.value), 1, 40);
+        if (key === "volume") settings.volume = clamp(parseInt(input.value, 10), 0, 100);
+        if (key === "od") settings.od = clamp(parseFloat(input.value), 0, 10);
+        if (key === "offset") settings.offset = clamp(parseInt(input.value, 10), -100, 100);
+        applySettings();
+      });
+    });
+    els.setApfc.addEventListener("change", function () {
+      settings.showAPFC = !!els.setApfc.checked;
+      applySettings();
     });
 
     els.lanePads.addEventListener("pointerdown", function (e) {
@@ -1289,13 +1333,11 @@
       for (let i = 0; i < 4; i++) releaseLane(i);
     });
     window.addEventListener("resize", function () {
-      if (active && els && !els.play.hidden) {
-        resizeCanvas();
-      }
+      if (active && els && !els.play.hidden) resizeCanvas();
     });
   }
 
-  /* ---------------- 清理 ---------------- */
+  /* ---------------- 清理 / 对外 ---------------- */
   function stopGame() {
     startToken++;
     clearTimeout(countTimer);
@@ -1312,16 +1354,18 @@
       audio.pause();
       try { audio.currentTime = 0; } catch (e) { /* ignore */ }
     }
+    settingsOpen = false;
     if (els) {
       els.count.hidden = true;
       els.loading.hidden = true;
       els.result.hidden = true;
+      els.settings.hidden = true;
+      els.badges.hidden = true;
       els.judge.className = "judge-pop";
       for (let i = 0; i < 4; i++) setPadPressed(i, false);
     }
   }
 
-  /* ---------------- 对外接口 ---------------- */
   window.RhythmGame = {
     enter: enter,
     exit: exit,
@@ -1333,10 +1377,14 @@
         skinReady: !!skin,
         audioReadyState: audio ? audio.readyState : -1,
         audioNetworkState: audio ? audio.networkState : -1,
-        audioSrc: audio ? audio.src.split("/").slice(-2).join("/") : "",
+        audioSrc: audio ? audio.src.split("/").slice(-1)[0] : "",
         audioPaused: audio ? audio.paused : true,
         audioTime: audio ? Math.round(audio.currentTime * 1000) : 0,
-        audioDuration: audio && isFinite(audio.duration) ? Math.round(audio.duration * 1000) : 0
+        audioDuration: audio && isFinite(audio.duration) ? Math.round(audio.duration * 1000) : 0,
+        speed: settings.speed,
+        od: settings.od,
+        offset: settings.offset,
+        volume: settings.volume
       };
       if (!game) return base;
       return Object.assign(base, {
@@ -1349,7 +1397,17 @@
         maxCombo: game.maxCombo,
         acc: Math.round(game.accuracy * 100) / 100,
         judged: game.judged,
-        notes: game.notes.length
+        notes: game.notes.length,
+        travel: Math.round(game.travel),
+        windows: {
+          perfect: Math.round(game.windows.perfect),
+          great: Math.round(game.windows.great),
+          good: Math.round(game.windows.good),
+          bad: Math.round(game.windows.bad),
+          miss: Math.round(game.windows.miss)
+        },
+        ap: game.ap,
+        fc: game.fc
       });
     }
   };

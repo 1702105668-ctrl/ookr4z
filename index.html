@@ -64,7 +64,7 @@
           <span class="tool-icon">🎼</span>
           <span class="tool-no">01</span>
           <span class="tool-title">打歌</span>
-          <span class="tool-desc">16 张 4K 谱面，两套 Malody Regular Dan，配上你的 osu!mania 皮肤。</span>
+          <span class="tool-desc">20 张 4K 谱面，包含 4 张 LN 长条谱，配上你的 osu!mania 皮肤。</span>
           <span class="tool-enter">进入选曲 <span class="arrow">→</span></span>
         </button>
 
@@ -84,10 +84,6 @@
           <span class="tool-enter">排雷去 <span class="arrow">→</span></span>
         </button>
       </div>
-
-      <footer class="site-footer">
-        <span id="footer-text">用 ❤️ 和一点点代码搭成 · Hosted on GitHub Pages</span>
-      </footer>
     </section>
 
     <!-- ================= 打歌 ================= -->
@@ -101,80 +97,47 @@
         <span class="view-tag pink">4K MANIA</span>
       </div>
 
-      <!-- 选曲 -->
+      <!-- 选曲 + 谱面信息 -->
       <div class="rhythm-select" id="rhythm-select">
-        <div class="select-head">
-          <div>
-            <span class="eyebrow">SELECT A CHART</span>
-            <h3>选择一张谱面</h3>
-            <p>Malody 4K Regular Dan v3 · Jack / Stream<br>谱面来自你提供的两个 .osz，歌曲版权归原作者。</p>
-          </div>
-          <div class="pack-tabs" id="pack-tabs" role="tablist" aria-label="选择谱面包">
-            <button type="button" class="active" data-pack="jack" role="tab" aria-selected="true">
-              <span>JACK</span><small>叠键</small>
-            </button>
-            <button type="button" data-pack="stream" role="tab" aria-selected="false">
-              <span>STREAM</span><small>连打</small>
-            </button>
-          </div>
-        </div>
-
-        <div class="pack-strip" id="pack-strip">
-          <div class="pack-strip-copy">
-            <span class="pack-label" id="pack-label">JACK</span>
-            <h4 id="pack-title">叠键特化</h4>
-            <p id="pack-desc">密集的叠键与 Jack，考验手指的独立性。</p>
-          </div>
-          <div class="pack-strip-stats">
-            <span><b id="pack-count">8</b> 张谱面</span>
-            <span>Reg-3 → Reg-10</span>
-            <span>4 Keys</span>
-          </div>
-          <img class="pack-mascot" src="skin-mascot.webp" alt="" loading="lazy" decoding="async">
-        </div>
-
-        <div class="chart-grid" id="chart-grid"></div>
-        <p class="select-credit">Skin: OoKr4z&nbsp;&nbsp;·&nbsp;&nbsp;Charts: Malody 4K Regular Dan v3&nbsp;&nbsp;·&nbsp;&nbsp;只保留可玩的谱面，已移除占位谱面</p>
-      </div>
-
-      <!-- 谱面详情 -->
-      <div class="rhythm-detail" id="rhythm-detail" hidden>
-        <img class="detail-bg" id="detail-bg" alt="" aria-hidden="true">
-        <div class="detail-inner">
-          <button class="back-btn detail-back" type="button" id="detail-back">← 返回选曲</button>
-          <div class="detail-main">
-            <div class="detail-cover-wrap">
-              <img id="detail-cover" class="detail-cover" alt="">
-              <span class="detail-level" id="detail-level">Reg-3</span>
+        <aside class="chart-picker">
+          <div class="picker-head">
+            <div>
+              <span class="eyebrow">SELECT A CHART</span>
+              <h3>谱面列表</h3>
             </div>
-            <div class="detail-copy">
-              <span class="eyebrow" id="detail-pack">JACK / REGULAR DAN V3</span>
-              <h3 id="detail-title">—</h3>
-              <p class="detail-artist" id="detail-artist">—</p>
-              <div class="detail-meta">
-                <span>BPM <b id="detail-bpm">—</b></span>
-                <span>音符 <b id="detail-notes">—</b></span>
-                <span>长条 <b id="detail-ln">—</b></span>
-                <span>谱师 <b id="detail-mapper">—</b></span>
-                <span>时长 <b id="detail-length">—</b></span>
-              </div>
+            <span class="picker-count" id="chart-count">20 张</span>
+          </div>
+          <div class="chart-list" id="chart-list"></div>
+        </aside>
 
-              <div class="speed-row">
-                <span class="speed-label">音符速度</span>
-                <div class="speed-options" id="speed-options" role="group" aria-label="音符速度">
-                  <button type="button" data-speed="0.85">慢</button>
-                  <button type="button" data-speed="1" class="active">标准</button>
-                  <button type="button" data-speed="1.15">快</button>
-                  <button type="button" data-speed="1.3">极快</button>
-                </div>
-                <span class="best-score" id="detail-best">最高分：—</span>
+        <section class="chart-preview">
+          <img class="preview-bg" id="preview-bg" alt="" aria-hidden="true">
+          <div class="preview-inner">
+            <div class="preview-cover-wrap">
+              <img class="preview-cover" id="preview-cover" alt="">
+              <span class="preview-level" id="preview-level">Reg-3</span>
+            </div>
+            <div class="preview-copy">
+              <span class="eyebrow" id="preview-pack">JACK / Reg-3</span>
+              <h3 id="preview-title">—</h3>
+              <p class="preview-artist" id="preview-artist">—</p>
+              <div class="preview-meta">
+                <span class="preview-stars" id="preview-stars">★ 0.0</span>
+                <span>BPM <b id="preview-bpm">—</b></span>
+                <span>音符 <b id="preview-notes">—</b></span>
+                <span>长条 <b id="preview-ln">—</b></span>
+                <span>时长 <b id="preview-length">—</b></span>
               </div>
-
-              <button class="btn primary big start-chart-btn" type="button" id="detail-start">▶ 开始打歌</button>
-              <p class="detail-note">电脑按 <b>D F J K</b> 或方向键；手机点下方四个按键。<br>长条需要按住，直到尾巴结束。</p>
+              <p class="preview-mapper">谱师 <b id="preview-mapper">—</b></p>
+              <div class="preview-best">
+                <span>历史最高成绩</span>
+                <strong id="preview-best">—</strong>
+              </div>
+              <button class="btn primary big start-chart-btn" type="button" id="preview-start">▶ 开始打歌</button>
+              <p class="preview-note">电脑按 <b>D F J K</b> 或方向键，手机点下方按键。开始后可暂停调设置。</p>
             </div>
           </div>
-        </div>
+        </section>
       </div>
 
       <!-- 游玩 -->
@@ -190,6 +153,7 @@
             <div class="play-bar"><i id="play-fill"></i></div>
             <span id="play-duration">0:00</span>
           </div>
+          <button class="settings-btn" type="button" id="play-settings" aria-label="游戏设置">⚙</button>
         </div>
 
         <div class="rhythm-stage" id="rhythm-stage">
@@ -201,6 +165,11 @@
             <div class="hud-item hud-right"><span>ACC</span><strong id="rhythm-acc">100.00%</strong></div>
           </div>
 
+          <div class="play-badges" id="play-badges">
+            <span class="play-badge ap" id="badge-ap">AP</span>
+            <span class="play-badge fc" id="badge-fc">FC</span>
+          </div>
+
           <div class="rhythm-overlay" id="rhythm-loading" hidden>
             <span class="loading-ring"></span>
             <p id="loading-text">正在加载谱面与音频…</p>
@@ -208,6 +177,40 @@
 
           <div class="rhythm-overlay countdown" id="rhythm-count" hidden>
             <span id="rhythm-count-text">3</span>
+          </div>
+
+          <div class="rhythm-overlay settings-overlay" id="rhythm-settings" hidden>
+            <div class="settings-card">
+              <span class="overlay-kicker">SETTINGS</span>
+              <h3>游戏设置</h3>
+              <div class="setting-row">
+                <label for="set-speed">流速 <b id="out-speed">30</b></label>
+                <input type="range" id="set-speed" min="1" max="40" step="1" value="30">
+                <small>osu!mania 原生流速，1–40</small>
+              </div>
+              <div class="setting-row">
+                <label for="set-volume">音量 <b id="out-volume">80%</b></label>
+                <input type="range" id="set-volume" min="0" max="100" step="1" value="80">
+              </div>
+              <div class="setting-row">
+                <label for="set-od">OD <b id="out-od">8.0</b></label>
+                <input type="range" id="set-od" min="0" max="10" step="0.1" value="8">
+                <small id="out-windows">判定窗口按 osu!mania OD 计算</small>
+              </div>
+              <div class="setting-row">
+                <label for="set-offset">偏移 <b id="out-offset">0 ms</b></label>
+                <input type="range" id="set-offset" min="-100" max="100" step="1" value="0">
+              </div>
+              <label class="toggle-row">
+                <span>显示 AP / FC 标</span>
+                <input type="checkbox" id="set-apfc" checked>
+                <i aria-hidden="true"></i>
+              </label>
+              <div class="settings-actions">
+                <button class="btn primary" type="button" id="settings-close">继续游戏</button>
+                <button class="btn ghost" type="button" id="settings-exit">退出谱面</button>
+              </div>
+            </div>
           </div>
 
           <div class="rhythm-overlay" id="rhythm-result" hidden>
@@ -220,6 +223,7 @@
               <div><span>最大连击</span><strong id="rhythm-result-combo">0</strong></div>
             </div>
             <p class="result-detail" id="rhythm-result-detail">Perfect 0 · Great 0 · Good 0 · Bad 0 · Miss 0</p>
+            <p class="result-badge" id="rhythm-result-badge"></p>
             <div class="result-actions">
               <button class="btn primary" type="button" id="rhythm-retry">再来一次</button>
               <button class="btn ghost" type="button" id="rhythm-result-back">返回选曲</button>
@@ -250,31 +254,47 @@
         <span class="view-tag teal">NETEASE</span>
       </div>
 
-      <div class="panel netease-panel">
-        <div class="netease-hero">
-          <div class="netease-badge" aria-hidden="true">☁️</div>
-          <div class="netease-copy">
-            <span class="eyebrow">NETEASE CLOUD MUSIC</span>
-            <h3>OoKr4z 的歌单</h3>
-            <p>点播放器里的歌就能听。封面、歌名和播放控制都由网易云官方提供。</p>
+      <div class="music-app">
+        <aside class="music-side">
+          <div class="playlist-head">
+            <img class="playlist-cover" id="playlist-cover" alt="" loading="lazy">
+            <div class="playlist-info">
+              <span class="eyebrow">PLAYLIST</span>
+              <h3 id="playlist-name">This is true music</h3>
+              <p><span id="playlist-owner">OoKr4z</span> · <span id="playlist-count">43</span> 首</p>
+            </div>
           </div>
-          <a class="btn ghost netease-link" href="https://music.163.com/playlist?id=12374407187" target="_blank" rel="noopener">在网易云打开 ↗</a>
-        </div>
-
-        <div class="netease-player-wrap">
-          <div class="netease-loading" id="netease-loading">
-            <span class="loading-ring"></span>
-            <p>正在加载网易云播放器…</p>
+          <label class="track-search">
+            <span>⌕</span>
+            <input type="search" id="track-search" placeholder="搜索歌名 / 曲师" autocomplete="off">
+          </label>
+          <div class="track-list-wrap">
+            <div class="track-list" id="track-list"></div>
           </div>
-          <iframe
-            id="netease-player"
-            title="OoKr4z 的网易云歌单"
-            allow="autoplay; encrypted-media"
-            referrerpolicy="no-referrer-when-downgrade"
-            loading="lazy"></iframe>
-        </div>
+        </aside>
 
-        <p class="netease-note">播放器来自网易云音乐官方外链。部分歌曲可能因为版权或会员限制无法播放；如果加载失败，点右上角「在网易云打开」。离开本页后播放器可能会继续播放，回来可以继续控制。</p>
+        <section class="music-main">
+          <div class="now-card">
+            <div class="now-cover-wrap">
+              <img class="now-cover" id="now-cover" alt="" loading="lazy">
+              <span class="now-glow" aria-hidden="true"></span>
+            </div>
+            <div class="now-info">
+              <span class="eyebrow" id="now-label">SELECT A TRACK</span>
+              <h3 id="now-title">选择一首歌</h3>
+              <p class="now-artist" id="now-artist">点左侧列表开始播放</p>
+              <p class="now-album" id="now-album"></p>
+            </div>
+            <div class="player-shell">
+              <div class="player-placeholder" id="player-placeholder">
+                <span>♪</span>
+                <p>点左侧任意一首歌，官方播放器会出现在这里。</p>
+              </div>
+              <iframe id="netease-player" title="网易云单曲播放器" allow="autoplay; encrypted-media" referrerpolicy="no-referrer-when-downgrade"></iframe>
+            </div>
+            <p class="player-hint">播放器由网易云官方提供。如果选歌后没有自动播放，点一下播放器上的 ▶；版权 / 会员限制以网易云提示为准。</p>
+          </div>
+        </section>
       </div>
     </section>
 
@@ -329,6 +349,7 @@
 
   <script src="config.js"></script>
   <script src="songs-data.js" defer></script>
+  <script src="playlist-data.js" defer></script>
   <script src="rhythm.js" defer></script>
   <script src="music.js" defer></script>
   <script src="minesweeper.js" defer></script>
