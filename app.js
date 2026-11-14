@@ -9,8 +9,7 @@
     owner: "OoKr4z",
     avatar: "🐟",
     bio: "Once Forgotten,Nothing Remains",
-    github: "",
-    footer: "用 ❤️ 和一点点代码搭成 · Hosted on GitHub Pages"
+    github: ""
   }, window.SITE_CONFIG || {});
 
   const TOOL_ORDER = ["rhythm", "music", "minesweeper"];
@@ -34,12 +33,10 @@
     const hero = $("hero-name");
     const bio = $("hero-bio");
     const avatar = $("avatar-emoji");
-    const footer = $("footer-text");
     if (brand) brand.textContent = CFG.name || "OoKr4z的小站";
     if (hero) hero.textContent = CFG.name || "OoKr4z的小站";
     if (bio) bio.textContent = CFG.bio || "";
     if (avatar) avatar.textContent = CFG.avatar || "🐟";
-    if (footer) footer.textContent = CFG.footer || "";
 
     const github = $("github-link");
     if (github && CFG.github && /^https?:\/\//i.test(CFG.github)) {

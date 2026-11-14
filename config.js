@@ -17,8 +17,5 @@ window.SITE_CONFIG = {
 
   // 如果有 GitHub 主页，填完整网址，例如 "https://github.com/你的用户名"
   // 没有就留空字符串 ""
-  github: "",
-
-  // 页脚文字
-  footer: "OoKr4z · 用 ❤️ 和一点点代码搭成 · Hosted on GitHub Pages"
+  github: ""
 };
