@@ -1,5 +1,5 @@
 /* =========================================================
-   听歌 · 网易云歌单（43 首完整列表 + 官方单曲播放器）
+   听歌 · 完整 43 首网易云歌单 + 本地音量控制
    ========================================================= */
 (function () {
   "use strict";
@@ -10,7 +10,8 @@
   let selected = -1;
   let query = "";
   let data = null;
-  let playerTimer = 0;
+  let seeking = false;
+  let volume = 80;
 
   function $(id) { return document.getElementById(id); }
 
@@ -32,8 +33,16 @@
       nowTitle: $("now-title"),
       nowArtist: $("now-artist"),
       nowAlbum: $("now-album"),
-      player: $("netease-player"),
-      placeholder: $("player-placeholder")
+      audio: $("netease-audio"),
+      toggle: $("music-toggle"),
+      prev: $("music-prev"),
+      next: $("music-next"),
+      seek: $("audio-seek"),
+      current: $("audio-current"),
+      duration: $("audio-duration"),
+      volume: $("music-volume"),
+      volumeLabel: $("volume-label"),
+      status: $("audio-status")
     };
   }
 
@@ -44,6 +53,13 @@
     els.name.textContent = data.name || "歌单";
     els.owner.textContent = data.owner || "OoKr4z";
     els.count.textContent = String(data.tracks.length);
+    try {
+      const saved = parseInt(localStorage.getItem("music-volume") || "80", 10);
+      if (isFinite(saved)) volume = Math.max(0, Math.min(100, saved));
+    } catch (e) { /* ignore */ }
+    els.audio.volume = volume / 100;
+    els.volume.value = String(volume);
+    els.volumeLabel.textContent = volume + "%";
     renderList();
     if (data.tracks.length) selectTrack(0, false);
     bindOnce();
@@ -56,21 +72,81 @@
       query = els.search.value.trim().toLowerCase();
       renderList();
     });
-    els.player.addEventListener("load", function () {
-      if (active && els.player.src.indexOf("outchain/player") >= 0) hidePlaceholder();
+    els.toggle.addEventListener("click", function () {
+      if (!els.audio.src) {
+        if (data.tracks.length) selectTrack(Math.max(0, selected), true);
+        return;
+      }
+      if (els.audio.paused) {
+        audioPlay();
+      } else {
+        els.audio.pause();
+      }
     });
-  }
+    els.prev.addEventListener("click", function () {
+      if (!data.tracks.length) return;
+      selectTrack((selected - 1 + data.tracks.length) % data.tracks.length, true);
+    });
+    els.next.addEventListener("click", function () {
+      if (!data.tracks.length) return;
+      selectTrack((selected + 1) % data.tracks.length, true);
+    });
+    els.seek.addEventListener("input", function () {
+      seeking = true;
+      const d = els.audio.duration;
+      if (isFinite(d) && d > 0) {
+        els.audio.currentTime = (parseInt(els.seek.value, 10) / 1000) * d;
+        els.current.textContent = formatTime(els.audio.currentTime);
+      }
+    });
+    ["change", "pointerup", "touchend"].forEach(function (evt) {
+      els.seek.addEventListener(evt, function () { seeking = false; });
+    });
+    els.volume.addEventListener("input", function () {
+      volume = Math.max(0, Math.min(100, parseInt(els.volume.value, 10) || 0));
+      els.audio.volume = volume / 100;
+      els.volumeLabel.textContent = volume + "%";
+      try { localStorage.setItem("music-volume", String(volume)); } catch (e) { /* ignore */ }
+    });
 
-  function hidePlaceholder() {
-    if (els.placeholder) els.placeholder.hidden = true;
-    if (els.player) els.player.classList.add("ready");
-  }
-
-  function showPlaceholder(text) {
-    if (!els.placeholder) return;
-    els.placeholder.hidden = false;
-    els.placeholder.querySelector("p").textContent = text;
-    els.player.classList.remove("ready");
+    els.audio.addEventListener("loadedmetadata", function () {
+      els.duration.textContent = formatTime(els.audio.duration);
+    });
+    els.audio.addEventListener("timeupdate", function () {
+      if (seeking) return;
+      const d = els.audio.duration;
+      if (isFinite(d) && d > 0) els.seek.value = String(Math.round(els.audio.currentTime / d * 1000));
+      els.current.textContent = formatTime(els.audio.currentTime);
+      if (isFinite(d)) els.duration.textContent = formatTime(d);
+    });
+    els.audio.addEventListener("play", function () {
+      els.toggle.textContent = "⏸";
+      els.toggle.setAttribute("aria-label", "暂停");
+      els.status.textContent = "正在播放 · 网易云音乐";
+      els.nowLabel.textContent = "NOW PLAYING";
+    });
+    els.audio.addEventListener("pause", function () {
+      els.toggle.textContent = "▶";
+      els.toggle.setAttribute("aria-label", "播放");
+      if (selected >= 0 && !els.audio.ended) els.nowLabel.textContent = "PAUSED";
+    });
+    els.audio.addEventListener("waiting", function () {
+      els.status.textContent = "缓冲中…";
+    });
+    els.audio.addEventListener("playing", function () {
+      els.status.textContent = "正在播放 · 网易云音乐";
+    });
+    els.audio.addEventListener("ended", function () {
+      if (data.tracks.length > 1) selectTrack((selected + 1) % data.tracks.length, true);
+      else {
+        els.toggle.textContent = "▶";
+        els.status.textContent = "播放结束";
+      }
+    });
+    els.audio.addEventListener("error", function () {
+      els.toggle.textContent = "▶";
+      els.status.textContent = "这首歌暂时不能播放（版权 / 会员限制）";
+    });
   }
 
   function renderList() {
@@ -133,9 +209,24 @@
     els.list.appendChild(frag);
   }
 
+  function streamUrl(id) {
+    return "https://music.163.com/song/media/outer/url?id=" + encodeURIComponent(id) + ".mp3";
+  }
+
+  function audioPlay() {
+    const p = els.audio.play();
+    if (p && p.catch) {
+      p.catch(function () {
+        els.status.textContent = "播放失败，可能是版权 / 会员限制";
+        els.toggle.textContent = "▶";
+      });
+    }
+  }
+
   function selectTrack(index, play) {
     if (!data || !data.tracks[index]) return;
     const t = data.tracks[index];
+    const changed = selected !== index;
     selected = index;
     els.nowCover.src = t.cover;
     els.nowLabel.textContent = play ? "NOW PLAYING" : "SELECTED";
@@ -148,14 +239,15 @@
     const activeRow = els.list.querySelector('.track-row[data-index="' + index + '"]');
     if (activeRow) activeRow.scrollIntoView({ block: "nearest" });
 
+    if (changed || !els.audio.src) {
+      els.audio.src = streamUrl(t.id);
+      els.audio.load();
+      els.current.textContent = "0:00";
+      els.duration.textContent = formatTime(t.duration);
+      els.seek.value = "0";
+    }
     if (play) {
-      showPlaceholder("正在加载官方播放器…");
-      els.player.src = "https://music.163.com/outchain/player?type=2&id=" +
-        encodeURIComponent(t.id) + "&auto=1&height=90";
-      clearTimeout(playerTimer);
-      playerTimer = setTimeout(function () {
-        if (active) hidePlaceholder();
-      }, 3500);
+      audioPlay();
       if (window.innerWidth < 760) {
         setTimeout(function () {
           const card = els.nowTitle.closest(".now-card");
@@ -163,6 +255,7 @@
         }, 80);
       }
     }
+    if (!play) els.status.textContent = "点播放按钮开始";
   }
 
   window.MusicRoom = {
@@ -170,26 +263,20 @@
       if (!els) cache();
       active = true;
       if (!data) init();
+      if (els.audio) els.audio.volume = volume / 100;
       if (selected >= 0) {
         const row = els.list.querySelector('.track-row[data-index="' + selected + '"]');
         if (row) row.classList.add("active");
       }
     },
     exit: function () {
-      // 离开听歌页时停止官方播放器，避免在别的页面里找不到暂停按钮。
       active = false;
-      clearTimeout(playerTimer);
-      if (els && els.player) {
-        els.player.src = "about:blank";
-        showPlaceholder("点左侧任意一首歌，官方播放器会出现在这里。");
-      }
+      if (els && els.audio) els.audio.pause();
     },
     stop: function () {
-      if (!els) return;
-      clearTimeout(playerTimer);
-      els.player.src = "about:blank";
-      els.player.classList.remove("ready");
-      showPlaceholder("点左侧任意一首歌，官方播放器会出现在这里。");
+      if (!els || !els.audio) return;
+      els.audio.pause();
+      try { els.audio.currentTime = 0; } catch (e) { /* ignore */ }
     }
   };
 })();

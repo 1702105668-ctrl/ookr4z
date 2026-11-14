@@ -10,7 +10,6 @@
     ln: { label: "LN", cn: "长条" }
   };
   const LANE_COLORS = ["#ff6b9d", "#c084fc", "#4be3d0", "#ffd166"];
-  const KEYS = ["D", "F", "J", "K"];
   const DEFAULTS = { speed: 30, volume: 80, od: 8, offset: 0, showAPFC: true };
   const WEIGHT = { perfect: 1, great: 0.98, good: 2 / 3, bad: 1 / 3, miss: 0 };
   const POINT = { perfect: 1000, great: 980, good: 667, bad: 333, miss: 0 };
@@ -30,6 +29,7 @@
   let sctx = null;
   let skin = null;
   let skinPromise = null;
+  let holdPattern = null;
   let chartPromise = null;
   let startToken = 0;
   let countTimer = 0;
@@ -38,6 +38,7 @@
   let loadError = "";
   let unlockToken = 0;
   let settingsOpen = false;
+  const pointerLanes = new Map();
 
   function $(id) { return document.getElementById(id); }
   function toast(message) {
@@ -168,8 +169,7 @@
       resultBadge: $("rhythm-result-badge"),
       retry: $("rhythm-retry"),
       resultBack: $("rhythm-result-back"),
-      judge: $("judge-pop"),
-      lanePads: $("lane-pads")
+      judge: $("judge-pop")
     };
     els.ctx = els.canvas.getContext("2d");
     els.ctx.imageSmoothingEnabled = true;
@@ -197,6 +197,7 @@
     active = false;
     startToken++;
     stopGame();
+    document.body.classList.remove("rhythm-playing");
     if (els) {
       els.play.hidden = true;
       els.select.hidden = false;
@@ -205,6 +206,7 @@
 
   function showSelect() {
     if (!els) return;
+    document.body.classList.remove("rhythm-playing");
     els.select.hidden = false;
     els.play.hidden = true;
     els.settings.hidden = true;
@@ -214,6 +216,7 @@
 
   function showPlay() {
     if (!els) return;
+    document.body.classList.add("rhythm-playing");
     els.select.hidden = true;
     els.play.hidden = false;
     requestAnimationFrame(resizeCanvas);
@@ -411,7 +414,7 @@
     if (chartPromise) return chartPromise;
     chartPromise = new Promise(function (resolve, reject) {
       const script = document.createElement("script");
-      script.src = "charts-data.js";
+      script.src = "charts-data.js?v=8";
       script.onload = function () {
         if (window.RHYTHM_CHARTS) resolve(window.RHYTHM_CHARTS);
         else { chartPromise = null; reject(new Error("chart data missing")); }
@@ -778,7 +781,6 @@
     if (game.keyDown[lane]) return;
     game.keyDown[lane] = true;
     game.laneGlow[lane] = performance.now();
-    setPadPressed(lane, true);
 
     const t = gameTime();
     const activeHold = game.activeHolds[lane];
@@ -816,13 +818,6 @@
     game.lastRelease[lane] = performance.now();
     const hold = game.activeHolds[lane];
     if (hold) hold.holding = false;
-    setPadPressed(lane, false);
-  }
-
-  function setPadPressed(lane, on) {
-    if (!els) return;
-    const pad = els.lanePads.querySelector('[data-lane="' + lane + '"]');
-    if (pad) pad.classList.toggle("pressed", !!on);
   }
 
   function updateGame(t, dt) {
@@ -961,10 +956,10 @@
   function getLayout() {
     const w = dims.w;
     const h = dims.h;
-    const boardW = Math.min(w - (w < 640 ? 20 : 130), 680);
+    const boardW = Math.min(w - (w < 640 ? 8 : 120), 620);
     const boardX = (w - boardW) / 2;
     const laneW = boardW / 4;
-    const judgeY = h * 0.78;
+    const judgeY = h * 0.82;
     return { w: w, h: h, boardW: boardW, boardX: boardX, laneW: laneW, judgeY: judgeY };
   }
 
@@ -984,6 +979,7 @@
     sctx = staticCanvas.getContext("2d");
     sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     sctx.imageSmoothingEnabled = true;
+    holdPattern = null;
     renderStatic();
     if (game) drawFrame(game.time);
   }
@@ -1033,16 +1029,6 @@
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, L.w, L.h);
 
-    // 皮肤舞台角色（放在轨道后面，只露出一部分）
-    if (skin && skin.mascot && L.w > 980) {
-      const mh = Math.min(330, L.h * 0.55);
-      const mw = mh * (skin.mascot.width / skin.mascot.height);
-      ctx.save();
-      ctx.globalAlpha = 0.92;
-      ctx.drawImage(skin.mascot, 14, L.h - mh + 10, mw, mh);
-      ctx.restore();
-    }
-
     ctx.save();
     roundRect(ctx, L.boardX, 0, L.boardW, L.h, 12);
     ctx.clip();
@@ -1075,31 +1061,6 @@
     bottomFade.addColorStop(1, "rgba(5,7,15,0.92)");
     ctx.fillStyle = bottomFade;
     ctx.fillRect(L.boardX, L.judgeY + 50, L.boardW, L.h - L.judgeY - 50);
-
-    // 皮肤里的 mania-stage-hint 本身是透明线（JudgementLine:0）；
-    // 保留一层白色判定线，保证这个皮肤下也能清楚看到落点。
-    if (skin && skin.hint) {
-      ctx.save();
-      ctx.globalAlpha = 0.9;
-      ctx.drawImage(skin.hint, L.boardX, L.judgeY - 1, L.boardW, 2);
-      ctx.restore();
-    }
-    ctx.save();
-    ctx.strokeStyle = "rgba(255,255,255,0.82)";
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(L.boardX, L.judgeY + 0.5);
-    ctx.lineTo(L.boardX + L.boardW, L.judgeY + 0.5);
-    ctx.stroke();
-    ctx.restore();
-
-    for (let i = 0; i < 4; i++) {
-      const x = L.boardX + i * L.laneW + L.laneW / 2;
-      ctx.fillStyle = "rgba(255,255,255,0.2)";
-      ctx.font = "600 10px Consolas, monospace";
-      ctx.textAlign = "center";
-      ctx.fillText(KEYS[i], x, L.h - 8);
-    }
     ctx.restore();
   }
 
@@ -1121,6 +1082,9 @@
     }
     ctx.globalAlpha = 1;
 
+    // 球形判定框在轨道落点；note 会落进框里再消失。
+    drawKeys(ctx, L);
+
     ctx.save();
     ctx.beginPath();
     ctx.rect(L.boardX, 0, L.boardW, L.judgeY + 10);
@@ -1129,7 +1093,6 @@
     drawNotes(ctx, L, t);
     ctx.restore();
 
-    drawKeys(ctx, L);
     drawParticles(ctx);
   }
 
@@ -1168,37 +1131,32 @@
   }
 
   function drawHoldBody(ctx, L, note, tailY, headY, active) {
-    const w = L.laneW * 0.36;
+    const w = L.laneW * 0.92;
     const x = L.boardX + note.lane * L.laneW + (L.laneW - w) / 2;
     const top = Math.max(-20, Math.min(tailY, headY));
     const bottom = Math.min(L.judgeY + 10, Math.max(tailY, headY));
     if (bottom - top < 1) return;
     if (skin && skin.holdbody) {
       ctx.save();
-      ctx.globalAlpha = active ? 0.72 : 0.48;
-      ctx.drawImage(skin.holdbody, 0, 0, skin.holdbody.width, skin.holdbody.height, x, top, w, bottom - top);
+      ctx.globalAlpha = 0.9;
+      if (!holdPattern) holdPattern = ctx.createPattern(skin.holdbody, "repeat-y");
+      if (holdPattern) {
+        ctx.translate(x, top);
+        ctx.scale(w / skin.holdbody.width, 1);
+        ctx.fillStyle = holdPattern;
+        ctx.fillRect(0, 0, skin.holdbody.width, bottom - top);
+      }
       ctx.restore();
+    } else {
+      ctx.fillStyle = "rgba(210,210,210,0.45)";
+      ctx.fillRect(x, top, w, bottom - top);
     }
-    ctx.fillStyle = LANE_COLORS[note.lane];
-    ctx.globalAlpha = active ? 0.3 : 0.16;
-    ctx.fillRect(x, top, w, bottom - top);
-    ctx.globalAlpha = active ? 0.9 : 0.55;
-    ctx.strokeStyle = LANE_COLORS[note.lane];
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, top, w - 1, bottom - top);
-    ctx.globalAlpha = 1;
-    const capY = Math.max(-20, Math.min(L.judgeY + 8, tailY));
-    ctx.fillStyle = LANE_COLORS[note.lane];
-    ctx.globalAlpha = 0.85;
-    roundRect(ctx, x - 2, capY - 4, w + 4, 8, 4);
-    ctx.fill();
-    ctx.globalAlpha = 1;
   }
 
   function drawNoteHead(ctx, L, note, y) {
     const img = note.end > 0 ? (skin && skin.ln) : (skin && skin.note);
-    const size = L.laneW * 0.58;
-    const h = size * 0.97;
+    const size = L.laneW * 0.92;
+    const h = size;
     const alpha = clamp((y + 70) / 90, 0.15, 1);
     ctx.globalAlpha = alpha;
     if (img) {
@@ -1214,22 +1172,23 @@
 
   function drawKeys(ctx, L) {
     if (!skin) return;
-    const keyH = Math.min(L.laneW * 1.75, L.h - L.judgeY - 8);
-    const keyW = keyH * 0.4;
-    const y = L.h - keyH - 2;
+    const size = L.laneW * 0.96;
     for (let lane = 0; lane < 4; lane++) {
-      const x = L.boardX + lane * L.laneW + (L.laneW - keyW) / 2;
-      const img = game.keyDown[lane] ? skin.keyDown : skin.keyUp;
-      if (img) {
-        ctx.globalAlpha = 0.9;
-        ctx.drawImage(img, x, y, keyW, keyH);
-        ctx.globalAlpha = 1;
-      } else {
-        ctx.strokeStyle = "rgba(255,255,255,0.22)";
-        ctx.lineWidth = 2;
-        roundRect(ctx, x, y, keyW, keyH, keyW / 2);
-        ctx.stroke();
+      const cx = L.boardX + lane * L.laneW + L.laneW / 2;
+      const pressed = !!game.keyDown[lane];
+      if (skin.note && pressed) {
+        ctx.save();
+        ctx.globalAlpha = 0.2;
+        ctx.drawImage(skin.note, cx - size / 2, L.judgeY - size / 2, size, size * 0.97);
+        ctx.restore();
       }
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, L.judgeY, size * 0.48, 0, Math.PI * 2);
+      ctx.strokeStyle = pressed ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.5)";
+      ctx.lineWidth = pressed ? 2.4 : 1.6;
+      ctx.stroke();
+      ctx.restore();
     }
   }
 
@@ -1308,21 +1267,32 @@
       applySettings();
     });
 
-    els.lanePads.addEventListener("pointerdown", function (e) {
-      const btn = e.target.closest("[data-lane]");
-      if (!btn) return;
+    function laneAt(clientX) {
+      if (!els || !game) return -1;
+      const rect = els.canvas.getBoundingClientRect();
+      const L = getLayout();
+      const x = clientX - rect.left;
+      if (x < L.boardX || x > L.boardX + L.boardW) return -1;
+      return clamp(Math.floor((x - L.boardX) / L.laneW), 0, 3);
+    }
+
+    els.canvas.addEventListener("pointerdown", function (e) {
+      if (!game || !game.running || game.finished || settingsOpen) return;
+      const lane = laneAt(e.clientX);
+      if (lane < 0) return;
       e.preventDefault();
-      const lane = parseInt(btn.dataset.lane, 10);
-      if (btn.setPointerCapture) {
-        try { btn.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      pointerLanes.set(e.pointerId, lane);
+      if (els.canvas.setPointerCapture) {
+        try { els.canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
       }
       pressLane(lane);
     });
-    ["pointerup", "pointercancel", "pointerleave"].forEach(function (evt) {
-      els.lanePads.addEventListener(evt, function (e) {
-        const btn = e.target.closest("[data-lane]");
-        if (!btn) return;
-        releaseLane(parseInt(btn.dataset.lane, 10));
+    ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (evt) {
+      els.canvas.addEventListener(evt, function (e) {
+        if (!pointerLanes.has(e.pointerId)) return;
+        const lane = pointerLanes.get(e.pointerId);
+        pointerLanes.delete(e.pointerId);
+        releaseLane(lane);
       });
     });
 
@@ -1355,6 +1325,7 @@
       try { audio.currentTime = 0; } catch (e) { /* ignore */ }
     }
     settingsOpen = false;
+    pointerLanes.clear();
     if (els) {
       els.count.hidden = true;
       els.loading.hidden = true;
@@ -1362,7 +1333,6 @@
       els.settings.hidden = true;
       els.badges.hidden = true;
       els.judge.className = "judge-pop";
-      for (let i = 0; i < 4; i++) setPadPressed(i, false);
     }
   }
 

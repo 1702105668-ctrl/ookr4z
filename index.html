@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#080a12">
   <title>OoKr4z的小站</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%9F%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
   <div class="bg-grid" aria-hidden="true"></div>
@@ -232,14 +232,6 @@
 
           <div class="judge-pop" id="judge-pop" aria-hidden="true"></div>
         </div>
-
-        <div class="lane-pads" id="lane-pads" aria-label="节奏按键">
-          <button type="button" data-lane="0"><kbd>D</kbd><span>左一</span></button>
-          <button type="button" data-lane="1"><kbd>F</kbd><span>左二</span></button>
-          <button type="button" data-lane="2"><kbd>J</kbd><span>右二</span></button>
-          <button type="button" data-lane="3"><kbd>K</kbd><span>右一</span></button>
-        </div>
-        <p class="rhythm-foot">Skin: OoKr4z · 长条要按住 · 按 Esc 退出 · 建议戴耳机</p>
       </div>
     </section>
 
@@ -285,14 +277,27 @@
               <p class="now-artist" id="now-artist">点左侧列表开始播放</p>
               <p class="now-album" id="now-album"></p>
             </div>
-            <div class="player-shell">
-              <div class="player-placeholder" id="player-placeholder">
-                <span>♪</span>
-                <p>点左侧任意一首歌，官方播放器会出现在这里。</p>
+            <div class="audio-player">
+              <div class="audio-row">
+                <button class="round-btn" type="button" id="music-prev" aria-label="上一首">⏮</button>
+                <button class="play-big" type="button" id="music-toggle" aria-label="播放">▶</button>
+                <button class="round-btn" type="button" id="music-next" aria-label="下一首">⏭</button>
+                <div class="audio-progress">
+                  <span id="audio-current">0:00</span>
+                  <input type="range" id="audio-seek" min="0" max="1000" value="0" aria-label="播放进度">
+                  <span id="audio-duration">0:00</span>
+                </div>
               </div>
-              <iframe id="netease-player" title="网易云单曲播放器" allow="autoplay; encrypted-media" referrerpolicy="no-referrer-when-downgrade"></iframe>
+              <div class="audio-bottom">
+                <span class="audio-status" id="audio-status">点左侧歌曲开始播放</span>
+                <label class="audio-volume">🔊
+                  <input type="range" id="music-volume" min="0" max="100" step="1" value="80" aria-label="音量">
+                  <b id="volume-label">80%</b>
+                </label>
+              </div>
+              <audio id="netease-audio" preload="metadata"></audio>
             </div>
-            <p class="player-hint">播放器由网易云官方提供。如果选歌后没有自动播放，点一下播放器上的 ▶；版权 / 会员限制以网易云提示为准。</p>
+            <p class="player-hint">歌曲由网易云音乐提供，部分歌曲可能受版权或会员限制。播放失败时会显示提示。</p>
           </div>
         </section>
       </div>
@@ -347,12 +352,12 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-  <script src="config.js"></script>
-  <script src="songs-data.js" defer></script>
-  <script src="playlist-data.js" defer></script>
-  <script src="rhythm.js" defer></script>
-  <script src="music.js" defer></script>
-  <script src="minesweeper.js" defer></script>
-  <script src="app.js" defer></script>
+  <script src="config.js?v=8"></script>
+  <script src="songs-data.js?v=8" defer></script>
+  <script src="playlist-data.js?v=8" defer></script>
+  <script src="rhythm.js?v=8" defer></script>
+  <script src="music.js?v=8" defer></script>
+  <script src="minesweeper.js?v=8" defer></script>
+  <script src="app.js?v=8" defer></script>
 </body>
 </html>
