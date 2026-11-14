@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="一个带打歌、听歌、扫雷、B站和便签的个人小站。">
+  <meta name="theme-color" content="#080a12">
+  <title>摸鱼小站</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%9F%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow glow-a" aria-hidden="true"></div>
+  <div class="bg-glow glow-b" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand" href="#home" data-home aria-label="回到首页">
+      <span class="brand-mark">✦</span>
+      <span id="brand-name">摸鱼小站</span>
+    </a>
+    <div class="topbar-right">
+      <div class="clock" aria-label="当前时间">
+        <span id="clock-time">--:--:--</span>
+        <span id="clock-date">加载中…</span>
+      </div>
+      <a class="icon-link" id="github-link" href="#" target="_blank" rel="noopener" hidden>GitHub ↗</a>
+    </div>
+  </header>
+
+  <main class="page">
+    <!-- ================= 首页 ================= -->
+    <section class="view home-view" id="view-home">
+      <div class="hero">
+        <div class="hero-copy">
+          <span class="eyebrow"><span class="pulse-dot"></span> WELCOME TO MY CORNER</span>
+          <h1>欢迎来到<br><span class="gradient-text" id="hero-name">摸鱼小站</span></h1>
+          <p class="hero-bio" id="hero-bio">白天认真生活，晚上打歌听歌。这里是我的小小网络角落。</p>
+          <div class="hero-meta">
+            <span class="status-chip"><span class="status-dot"></span> 正在营业</span>
+            <span class="keyboard-hint">按数字键 <kbd>1</kbd>–<kbd>5</kbd> 可直接打开</span>
+          </div>
+        </div>
+
+        <div class="avatar-orbit" aria-hidden="true">
+          <div class="orbit orbit-a"></div>
+          <div class="orbit orbit-b"></div>
+          <div class="orbit orbit-c"></div>
+          <div class="avatar-core" id="avatar-emoji">🐟</div>
+          <span class="float-badge badge-1">🎵</span>
+          <span class="float-badge badge-2">💣</span>
+          <span class="float-badge badge-3">📺</span>
+          <span class="orbit-label">EST. 2026</span>
+        </div>
+      </div>
+
+      <div class="section-heading">
+        <h2>今天想玩点什么？</h2>
+        <span>PICK ONE ↓</span>
+      </div>
+
+      <div class="tool-grid">
+        <button class="tool-card" type="button" data-view="rhythm" style="--accent:#ff5c9d;--accent-2:#9a6bff">
+          <span class="tool-icon">🎼</span>
+          <span class="tool-no">01</span>
+          <span class="tool-title">打歌</span>
+          <span class="tool-desc">Phigros 风格的 4K 节奏小游戏。键盘 <b>D F J K</b>，手机直接点。</span>
+          <span class="tool-enter">开始打歌 <span class="arrow">→</span></span>
+        </button>
+
+        <button class="tool-card" type="button" data-view="music" style="--accent:#4be3d0;--accent-2:#5b9dff">
+          <span class="tool-icon">🎧</span>
+          <span class="tool-no">02</span>
+          <span class="tool-title">听歌</span>
+          <span class="tool-desc">内置一首合成轻音乐，也可以放你电脑里的 MP3，文件不会上传。</span>
+          <span class="tool-enter">打开播放器 <span class="arrow">→</span></span>
+        </button>
+
+        <button class="tool-card" type="button" data-view="minesweeper" style="--accent:#ffc857;--accent-2:#ff7a59">
+          <span class="tool-icon">💣</span>
+          <span class="tool-no">03</span>
+          <span class="tool-title">扫雷</span>
+          <span class="tool-desc">经典扫雷，初级 / 中级 / 高级三档难度，第一步永远不会踩雷。</span>
+          <span class="tool-enter">排雷去 <span class="arrow">→</span></span>
+        </button>
+
+        <button class="tool-card" type="button" data-view="bilibili" style="--accent:#63b3ff;--accent-2:#a78bfa">
+          <span class="tool-icon">📺</span>
+          <span class="tool-no">04</span>
+          <span class="tool-title">看 B 站</span>
+          <span class="tool-desc">粘贴 BV 号或视频链接，直接在站内播放；也支持关键词搜索。</span>
+          <span class="tool-enter">打开电视 <span class="arrow">→</span></span>
+        </button>
+
+        <button class="tool-card" type="button" data-view="notes" style="--accent:#c084fc;--accent-2:#ff8ac4">
+          <span class="tool-icon">📝</span>
+          <span class="tool-no">05</span>
+          <span class="tool-title">随手记</span>
+          <span class="tool-desc">一个安静的小便签，边写边自动保存，下次打开还在。</span>
+          <span class="tool-enter">写点什么 <span class="arrow">→</span></span>
+        </button>
+
+        <article class="quote-card" aria-label="今日句子">
+          <span class="quote-mark">“</span>
+          <p>把喜欢的东西<br>放在一起，<br>就是一个人的宇宙。</p>
+          <span class="quote-sign">— 今日份的摸鱼宣言</span>
+        </article>
+      </div>
+
+      <footer class="site-footer">
+        <span id="footer-text">用 ❤️ 和一点点代码搭成 · Hosted on GitHub Pages</span>
+      </footer>
+    </section>
+
+    <!-- ================= 打歌 ================= -->
+    <section class="view tool-view" id="view-rhythm" hidden>
+      <div class="view-head">
+        <button class="back-btn" type="button" data-home>← 返回首页</button>
+        <div class="view-title-group">
+          <span class="view-kicker">MINI TOOL / 01</span>
+          <h2>打歌</h2>
+        </div>
+        <span class="view-tag pink">Phigros 风格</span>
+      </div>
+
+      <div class="panel rhythm-panel">
+        <div class="rhythm-stage" id="rhythm-stage">
+          <canvas id="rhythm-canvas" aria-label="节奏游戏画面"></canvas>
+
+          <div class="rhythm-hud" aria-live="off">
+            <div class="hud-item"><span>SCORE</span><strong id="rhythm-score">000000</strong></div>
+            <div class="hud-item hud-combo"><span>COMBO</span><strong id="rhythm-combo">0</strong></div>
+            <div class="hud-item hud-right"><span>ACC</span><strong id="rhythm-acc">100.00%</strong></div>
+          </div>
+
+          <div class="rhythm-overlay" id="rhythm-start">
+            <span class="overlay-kicker">4 KEYS · ONE SONG</span>
+            <h3>星尘节奏</h3>
+            <p class="overlay-desc">音符落到判定线时，按下对应的键。<br>电脑用 <b>D F J K</b>，手机点下方四个按键。</p>
+
+            <div class="difficulty-row" id="rhythm-difficulties" role="group" aria-label="选择难度">
+              <button class="diff-btn active" type="button" data-diff="easy">简单<small>放松一下</small></button>
+              <button class="diff-btn" type="button" data-diff="normal">普通<small>有点节奏</small></button>
+              <button class="diff-btn" type="button" data-diff="hard">困难<small>手速挑战</small></button>
+            </div>
+            <p class="best-score" id="rhythm-best">本难度最高分：—</p>
+            <button class="btn primary big" type="button" id="rhythm-start-btn">▶ 开始游戏</button>
+            <p class="overlay-tip">原创同风格小游戏 · 不是 Phigros 本体 · 游戏中按 Esc 可退出</p>
+          </div>
+
+          <div class="rhythm-overlay countdown" id="rhythm-count" hidden>
+            <span id="rhythm-count-text">3</span>
+          </div>
+
+          <div class="rhythm-overlay" id="rhythm-result" hidden>
+            <span class="overlay-kicker">RESULT</span>
+            <div class="result-grade" id="rhythm-grade">S</div>
+            <h3 id="rhythm-result-title">演奏完成！</h3>
+            <div class="result-grid">
+              <div><span>得分</span><strong id="rhythm-result-score">0</strong></div>
+              <div><span>准确率</span><strong id="rhythm-result-acc">0%</strong></div>
+              <div><span>最大连击</span><strong id="rhythm-result-combo">0</strong></div>
+            </div>
+            <p class="result-detail" id="rhythm-result-detail">Perfect 0 · Good 0 · Miss 0</p>
+            <div class="result-actions">
+              <button class="btn primary" type="button" id="rhythm-retry">再来一次</button>
+              <button class="btn ghost" type="button" data-home>返回首页</button>
+            </div>
+          </div>
+
+          <div class="judge-pop" id="judge-pop" aria-hidden="true"></div>
+        </div>
+
+        <div class="lane-pads" id="lane-pads" aria-label="节奏按键">
+          <button type="button" data-lane="0"><kbd>D</kbd><span>左一</span></button>
+          <button type="button" data-lane="1"><kbd>F</kbd><span>左二</span></button>
+          <button type="button" data-lane="2"><kbd>J</kbd><span>右二</span></button>
+          <button type="button" data-lane="3"><kbd>K</kbd><span>右一</span></button>
+        </div>
+        <p class="rhythm-foot">原创 Phigros 风格小游戏，不是 Phigros 本体。判定线附近按下才算命中，Miss 会断连。</p>
+      </div>
+    </section>
+
+    <!-- ================= 听歌 ================= -->
+    <section class="view tool-view" id="view-music" hidden>
+      <div class="view-head">
+        <button class="back-btn" type="button" data-home>← 返回首页</button>
+        <div class="view-title-group">
+          <span class="view-kicker">MINI TOOL / 02</span>
+          <h2>听歌</h2>
+        </div>
+        <span class="view-tag teal">Music Room</span>
+      </div>
+
+      <div class="panel music-panel">
+        <div class="music-top">
+          <div class="music-tabs" role="tablist" aria-label="音乐来源">
+            <button class="tab active" type="button" data-music-tab="demo" role="tab" aria-selected="true">内置轻音乐</button>
+            <button class="tab" type="button" data-music-tab="local" role="tab" aria-selected="false">本地音乐</button>
+          </div>
+          <label class="volume-control">🔊
+            <input type="range" id="music-volume" min="0" max="100" value="65" aria-label="音量">
+          </label>
+        </div>
+
+        <div class="music-pane" id="music-pane-demo">
+          <div class="demo-player">
+            <div class="record-wrap" id="record-wrap">
+              <div class="record"><span>♪</span></div>
+            </div>
+            <div class="demo-info">
+              <span class="now-label"><span class="eq-bars"><i></i><i></i><i></i></span> NOW PLAYING</span>
+              <h3>星尘漫游</h3>
+              <p>内置合成 · 轻音乐 · 循环播放</p>
+              <button class="play-big" type="button" id="demo-toggle" aria-label="播放内置音乐">▶</button>
+            </div>
+          </div>
+          <canvas id="music-visualizer" class="visualizer" aria-hidden="true"></canvas>
+          <p class="music-note">这首曲子是网页现场合成的，不联网也能听。离开这个页面后会继续播放，右下角可以随时暂停。</p>
+        </div>
+
+        <div class="music-pane" id="music-pane-local" hidden>
+          <label class="drop-zone" for="music-files">
+            <span class="drop-icon">📂</span>
+            <strong>选择你电脑里的音乐</strong>
+            <small>支持 MP3 / WAV / M4A 等浏览器能播放的格式 · 文件不会上传到网上</small>
+          </label>
+          <input type="file" id="music-files" accept="audio/*" multiple hidden>
+
+          <div class="playlist-head">
+            <span>播放列表 <b id="playlist-count">0</b></span>
+            <button class="text-btn" type="button" id="playlist-clear">清空列表</button>
+          </div>
+          <ol class="playlist" id="playlist">
+            <li class="playlist-empty">还没有歌曲，点上面的框选几首吧。</li>
+          </ol>
+
+          <div class="local-player">
+            <div class="local-now">
+              <span>正在播放</span>
+              <strong id="local-title">—</strong>
+            </div>
+            <div class="local-controls">
+              <button class="round-btn" type="button" id="local-prev" aria-label="上一首">⏮</button>
+              <button class="play-big" type="button" id="local-toggle" aria-label="播放">▶</button>
+              <button class="round-btn" type="button" id="local-next" aria-label="下一首">⏭</button>
+            </div>
+            <div class="progress-row">
+              <span id="local-current">0:00</span>
+              <input type="range" id="local-progress" min="0" max="1000" value="0" aria-label="播放进度">
+              <span id="local-duration">0:00</span>
+            </div>
+          </div>
+          <audio id="local-audio" preload="metadata"></audio>
+          <p class="music-note">本地音乐只在这个浏览器里播放，不会上传到 GitHub。刷新页面后需要重新选择文件。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 扫雷 ================= -->
+    <section class="view tool-view" id="view-minesweeper" hidden>
+      <div class="view-head">
+        <button class="back-btn" type="button" data-home>← 返回首页</button>
+        <div class="view-title-group">
+          <span class="view-kicker">MINI TOOL / 03</span>
+          <h2>扫雷</h2>
+        </div>
+        <span class="view-tag yellow">Classic</span>
+      </div>
+
+      <div class="panel mines-panel">
+        <div class="mines-toolbar">
+          <div class="segmented" id="mines-levels" role="group" aria-label="扫雷难度">
+            <button class="active" type="button" data-level="easy">初级 · 9×9</button>
+            <button type="button" data-level="medium">中级 · 16×16</button>
+            <button type="button" data-level="hard">高级 · 16×30</button>
+          </div>
+          <div class="mines-stats">
+            <div class="stat"><span>剩余雷</span><strong id="mines-left">10</strong></div>
+            <div class="stat"><span>时间</span><strong id="mines-timer">000</strong></div>
+            <button class="btn ghost small" type="button" id="mines-flag-mode">🚩 插旗模式：关</button>
+            <button class="btn primary small" type="button" id="mines-restart">↻ 重开</button>
+          </div>
+        </div>
+        <p class="mines-status" id="mines-status">左键翻开，右键插旗；手机可以开启插旗模式。第一步永远不会踩雷。</p>
+
+        <div class="board-stage">
+          <div class="mines-board-wrap">
+            <div class="mines-board" id="mines-board" role="grid" aria-label="扫雷棋盘"></div>
+          </div>
+          <div class="mines-overlay" id="mines-overlay" hidden>
+            <span class="mines-emoji" id="mines-overlay-emoji">🎉</span>
+            <h3 id="mines-overlay-title">通关！</h3>
+            <p id="mines-overlay-desc">用时 0 秒</p>
+            <button class="btn primary" type="button" id="mines-again">再来一局</button>
+          </div>
+        </div>
+
+        <div class="mines-legend">
+          <span><i class="legend-dot flag"></i> 右键 / 长按 = 插旗</span>
+          <span><i class="legend-dot mine"></i> 点开所有安全格子就赢</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 看 B 站 ================= -->
+    <section class="view tool-view" id="view-bilibili" hidden>
+      <div class="view-head">
+        <button class="back-btn" type="button" data-home>← 返回首页</button>
+        <div class="view-title-group">
+          <span class="view-kicker">MINI TOOL / 04</span>
+          <h2>看 B 站</h2>
+        </div>
+        <span class="view-tag blue">Bilibili</span>
+      </div>
+
+      <div class="panel bili-panel">
+        <div class="bili-search">
+          <input type="text" id="bili-input" placeholder="粘贴 BV 号 / 视频链接，或输入关键词" autocomplete="off" spellcheck="false">
+          <button class="btn primary" type="button" id="bili-go">播放 / 搜索</button>
+        </div>
+        <p class="bili-msg" id="bili-msg">在 B 站视频地址栏复制链接，或直接输入 BV 号，就能在这里看。</p>
+
+        <div class="bili-quick" aria-label="B 站快捷入口">
+          <a href="https://www.bilibili.com" target="_blank" rel="noopener">🏠 首页</a>
+          <a href="https://www.bilibili.com/v/popular/all" target="_blank" rel="noopener">🔥 热门</a>
+          <a href="https://www.bilibili.com/anime" target="_blank" rel="noopener">📺 番剧</a>
+          <a href="https://www.bilibili.com/v/game" target="_blank" rel="noopener">🎮 游戏</a>
+          <a href="https://www.bilibili.com/v/music" target="_blank" rel="noopener">🎵 音乐</a>
+        </div>
+
+        <div class="bili-frame-wrap" id="bili-frame-wrap">
+          <div class="bili-empty" id="bili-empty">
+            <span class="tv-emoji">📺</span>
+            <h3>这里是一台小电视</h3>
+            <p>粘贴一个 BV 号或视频链接，<br>就可以直接在这里播放。</p>
+            <span class="bili-tip">有些视频被 UP 主设置为“禁止嵌入”，这里会放不出来，点“去 B 站打开”就好。</span>
+          </div>
+          <iframe id="bili-player" title="B 站视频播放器" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen hidden></iframe>
+        </div>
+
+        <div class="bili-actions">
+          <button class="btn ghost small" type="button" id="bili-open" disabled>去 B 站打开 ↗</button>
+          <span class="bili-disclaimer">视频版权归原作者所有，本站仅使用 B 站官方播放器。</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 便签 ================= -->
+    <section class="view tool-view" id="view-notes" hidden>
+      <div class="view-head">
+        <button class="back-btn" type="button" data-home>← 返回首页</button>
+        <div class="view-title-group">
+          <span class="view-kicker">MINI TOOL / 05</span>
+          <h2>随手记</h2>
+        </div>
+        <span class="view-tag purple">Local only</span>
+      </div>
+
+      <div class="panel note-panel">
+        <div class="note-head">
+          <div>
+            <h3>今天想记点什么？</h3>
+            <p>边写边自动保存，只存在你自己的浏览器里。</p>
+          </div>
+          <span class="save-state" id="note-status">已保存</span>
+        </div>
+        <textarea id="note-input" maxlength="2000" placeholder="比如：&#10;· 今晚要早点睡&#10;· 周末去试试新的奶茶店&#10;· 这首歌真好听，记得搜一下…" spellcheck="false"></textarea>
+        <div class="note-foot">
+          <span id="note-count">0 / 2000</span>
+          <button class="btn ghost small" type="button" id="note-clear">清空便签</button>
+        </div>
+        <p class="music-note">小提醒：便签保存在浏览器的 localStorage 里，换电脑、换浏览器或清除浏览器数据后会看不到。</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- 全局迷你播放条 -->
+  <div class="mini-player" id="mini-player" hidden>
+    <span class="mini-eq" aria-hidden="true"><i></i><i></i><i></i></span>
+    <div class="mini-text">
+      <span id="mini-label">正在播放</span>
+      <strong id="mini-title">—</strong>
+    </div>
+    <button class="mini-btn" type="button" id="mini-toggle" aria-label="暂停或继续">⏸</button>
+    <button class="mini-btn close" type="button" id="mini-close" aria-label="停止播放">✕</button>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="config.js"></script>
+  <script src="rhythm.js" defer></script>
+  <script src="music.js" defer></script>
+  <script src="minesweeper.js" defer></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
